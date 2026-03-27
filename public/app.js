@@ -537,9 +537,14 @@ function renderUltimate(s, area, ctrl) {
       const a = document.getElementById('game-area');
       if (a) a.innerHTML += resultsHTML('💎 Résultats Détaillés', s.results.map(r => `
         <div class="result-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-          <div style="display:flex;justify-content:space-between;width:100%">
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:flex-start">
             <strong>${r.name}</strong>
-            <strong class="${r.winnings > 0 ? 'win' : r.winnings < 0 ? 'lose' : 'push'}">${r.winnings > 0 ? '+' : ''}${r.winnings}€</strong>
+            <div style="text-align:right">
+              <strong class="${r.winnings > 0 ? 'win' : r.winnings < 0 ? 'lose' : 'push'}">${r.winnings > 0 ? '+' : ''}${r.winnings}€</strong>
+              <div class="muted" style="font-size:0.75rem; margin-top:4px">
+                Avant: ${r.money - r.winnings}€ | Après: <strong style="color:var(--gold)">${r.money}€</strong>
+              </div>
+            </div>
           </div>
           ${r.detail ? `<div class="ult-results-detail" style="display:flex;gap:12px;font-size:0.8rem;background:rgba(0,0,0,0.2);padding:6px;border-radius:4px;width:100%">
             <div class="${r.detail.anteWin > 0 ? 'win' : r.detail.anteWin < 0 ? 'lose' : 'muted'}">A: ${r.detail.anteLabel}</div>
@@ -547,7 +552,6 @@ function renderUltimate(s, area, ctrl) {
             <div class="${r.detail.playWin > 0 ? 'win' : r.detail.playWin < 0 ? 'lose' : 'muted'}">P: ${r.detail.playLabel}</div>
             ${r.trips > 0 ? `<div class="${r.detail.bonusWin > 0 ? 'win' : 'lose'}">Bonus: ${r.detail.bonusLabel}</div>` : ''}
           </div>` : ''}
-          <div class="muted" style="align-self:flex-end">${r.money}€ au total</div>
         </div>
       `).join(''));
       document.getElementById('game-controls').innerHTML = '';

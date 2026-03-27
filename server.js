@@ -188,7 +188,7 @@ io.on('connection', (socket) => {
         if (action === 'poker-action') success = g.action(socket.id, data.type, data.amount);
         break;
       case 'ultimate':
-        if (action === 'bet') success = g.placeBet(socket.id, data.amount);
+        if (action === 'bet') success = g.placeBet(socket.id, data.amount, data.trips || 0);
         else if (action === 'action') success = g.playerAction(socket.id, data.type);
         break;
       case 'roulette':

@@ -6,6 +6,7 @@ let myId = null;
 let myName = '';
 let currentGame = null;
 let betAmount = 0;
+let tripsBet = 0;
 let showingResults = false;
 let resultsTimer = null;
 let isHost = false;
@@ -15,7 +16,6 @@ function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(`screen-${name}`).classList.add('active');
 }
-
 function notify(msg, type = 'info') {
   const el = document.getElementById('notification');
   el.textContent = msg;
@@ -35,7 +35,6 @@ function cardHTML(card) {
   const val = VALUES[card.value] || card.value;
   return `<div class="card ${card.suit}"><span class="card-value">${val}</span><span class="card-suit">${suit}</span></div>`;
 }
-
 function cardsHTML(cards) {
   return `<div class="card-container">${(cards||[]).map(c => cardHTML(c)).join('')}</div>`;
 }
@@ -53,8 +52,8 @@ function updatePlayersBar(players) {
   }).join('');
 }
 
-// ===== BET SECTION HELPER =====
-function betSectionHTML(title, subtitle = '') {
+// ===== BET SECTION =====
+function betSectionHTML(title, subtitle = '', showTrips = false) {
   return `
     <div class="bet-section glass">
       <h3>${title}</h3>
@@ -68,9 +67,27 @@ function betSectionHTML(title, subtitle = '') {
       </div>
       <div class="bet-amount" id="bet-display">${betAmount} €</div>
       <div class="bet-manual-input">
-        <span class="muted">ou saisir:</span>
+        <span class="muted">ou saisir Ante:</span>
         <input type="number" id="bet-manual" value="${betAmount}" min="1" step="1" onchange="setBetFromInput()">
         <span class="currency">€</span>
+      </div>
+      ${showTrips ? `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <p class="muted" style="margin-bottom:8px">🎲 Trips Bonus <span style="color:var(--gold)">(optionnel)</span></p>
+          <div class="bet-chips">
+            <div class="chip c10" onclick="addTrips(10)">10</div>
+            <div class="chip c25" onclick="addTrips(25)">25</div>
+            <div class="chip c50" onclick="addTrips(50)">50</div>
+          </div>
+          <div class="bet-manual-input">
+            <span class="muted">Trips:</span>
+            <input type="number" id="trips-manual" value="${tripsBet}" min="0" step="1" onchange="setTripsFromInput()">
+            <span class="currency">€</span>
+          </div>
+        </div>
+      ` : ''}
+      <div style="margin-top:12px;color:var(--muted);font-size:0.85rem">
+        ${showTrips ? `Total: <strong style="color:var(--gold)">${betAmount * 2 + tripsBet} €</strong> (Ante ${betAmount} + Blind ${betAmount}${tripsBet > 0 ? ` + Trips ${tripsBet}` : ''})` : ''}
       </div>
       <div class="bet-buttons">
         <button class="btn btn-ghost" onclick="resetBet()">Effacer</button>
@@ -79,21 +96,27 @@ function betSectionHTML(title, subtitle = '') {
     </div>`;
 }
 
-window.addBet = function(amount) { betAmount += amount; updateBetDisplay(); };
-window.resetBet = function() { betAmount = 0; updateBetDisplay(); };
+window.addBet = function(a) { betAmount += a; updateBetDisplay(); };
+window.resetBet = function() { betAmount = 0; tripsBet = 0; updateBetDisplay(); };
+window.addTrips = function(a) { tripsBet += a; updateBetDisplay(); };
 window.setBetFromInput = function() {
   const v = parseInt(document.getElementById('bet-manual')?.value || 0);
   if (v > 0) betAmount = v;
   updateBetDisplay();
 };
-
+window.setTripsFromInput = function() {
+  const v = parseInt(document.getElementById('trips-manual')?.value || 0);
+  tripsBet = Math.max(0, v);
+  updateBetDisplay();
+};
 function updateBetDisplay() {
   const el = document.getElementById('bet-display');
   if (el) el.textContent = `${betAmount} €`;
   const inp = document.getElementById('bet-manual');
   if (inp) inp.value = betAmount;
+  const ti = document.getElementById('trips-manual');
+  if (ti) ti.value = tripsBet;
 }
-
 function clearResultsState() {
   showingResults = false;
   if (resultsTimer) { clearTimeout(resultsTimer); resultsTimer = null; }
@@ -106,7 +129,6 @@ document.getElementById('btn-create').onclick = () => {
   myName = name;
   socket.emit('create-room', { playerName: name });
 };
-
 document.getElementById('btn-join').onclick = () => {
   const name = document.getElementById('player-name').value.trim();
   const code = document.getElementById('room-code').value.trim().toUpperCase();
@@ -115,33 +137,16 @@ document.getElementById('btn-join').onclick = () => {
   myName = name;
   socket.emit('join-room', { roomId: code, playerName: name });
 };
-
-document.getElementById('player-name').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('btn-create').click();
-});
-document.getElementById('room-code').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('btn-join').click();
-});
+document.getElementById('player-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btn-create').click(); });
+document.getElementById('room-code').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btn-join').click(); });
 
 // ===== LOBBY =====
-socket.on('room-joined', (room) => {
-  currentRoom = room;
-  myId = socket.id;
-  isHost = room.isHost;
-  showScreen('lobby');
-  updateLobby();
-});
-
-socket.on('room-update', (room) => {
-  currentRoom = room;
-  isHost = room.isHost;
-  updateLobby();
-});
+socket.on('room-joined', (room) => { currentRoom = room; myId = socket.id; isHost = room.isHost; showScreen('lobby'); updateLobby(); });
+socket.on('room-update', (room) => { currentRoom = room; isHost = room.isHost; updateLobby(); });
 
 function updateLobby() {
   const r = currentRoom;
   document.getElementById('lobby-room-id').textContent = r.id;
-
   const pl = document.getElementById('lobby-players');
   pl.innerHTML = r.players.map(p => `
     <div class="player-item">
@@ -151,113 +156,38 @@ function updateLobby() {
       ${p.id === r.hostId ? '<span class="badge">HÔTE</span>' : ''}
     </div>
   `).join('');
-
   document.getElementById('lobby-settings').classList.toggle('hidden', !r.isHost);
   document.getElementById('lobby-settings-guest').classList.toggle('hidden', r.isHost);
-
-  document.querySelectorAll('.game-option').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.game === r.gameType);
-  });
-
+  document.querySelectorAll('.game-option').forEach(btn => btn.classList.toggle('selected', btn.dataset.game === r.gameType));
   const btnStart = document.getElementById('btn-start');
   btnStart.classList.toggle('hidden', !r.isHost);
   if (r.isHost && r.gameType) btnStart.disabled = false;
-
   if (r.startMoney) document.getElementById('start-money').value = r.startMoney;
   const wcSel = document.getElementById('win-condition');
   if (wcSel && r.winCondition) wcSel.value = r.winCondition;
-
-  // Guest info
   const guestDiv = document.getElementById('lobby-settings-guest');
   if (!r.isHost && guestDiv) {
-    const gameLabel = r.gameType ? { blackjack: 'Blackjack', poker: 'Poker', ultimate: 'Ultimate', roulette: 'Roulette' }[r.gameType] : 'non choisi';
-    const condLabel = { none: 'Pas de limite', first_zero: 'Premier à 0€', first_x2: 'Premier à x2', first_x5: 'Premier à x5', first_x10: 'Premier à x10' }[r.winCondition] || 'Pas de limite';
-    guestDiv.innerHTML = `
-      <p class="muted">Jeu: <strong style="color:var(--gold)">${gameLabel}</strong></p>
-      <p class="muted">Argent: <strong style="color:var(--gold)">${r.startMoney} €</strong></p>
-      <p class="muted">Condition: <strong style="color:var(--gold)">${condLabel}</strong></p>
-      <p class="muted" style="margin-top:12px">⏳ En attente que l'hôte lance la partie...</p>
-    `;
+    const gl = r.gameType ? { blackjack:'Blackjack', poker:'Poker', ultimate:'Ultimate', roulette:'Roulette' }[r.gameType] : 'non choisi';
+    const cl = { none:'Pas de limite', first_zero:'Premier à 0€', first_x2:'x2', first_x5:'x5', first_x10:'x10' }[r.winCondition] || 'Pas de limite';
+    guestDiv.innerHTML = `<p class="muted">Jeu: <strong style="color:var(--gold)">${gl}</strong> | Argent: <strong style="color:var(--gold)">${r.startMoney}€</strong> | Condition: <strong style="color:var(--gold)">${cl}</strong></p><p class="muted" style="margin-top:8px">⏳ En attente de l'hôte...</p>`;
   }
 }
 
-document.getElementById('game-select').addEventListener('click', (e) => {
-  const btn = e.target.closest('.game-option');
-  if (!btn) return;
-  socket.emit('update-settings', { gameType: btn.dataset.game });
-});
-document.getElementById('start-money').addEventListener('change', (e) => {
-  socket.emit('update-settings', { startMoney: parseInt(e.target.value) });
-});
-document.getElementById('win-condition').addEventListener('change', (e) => {
-  socket.emit('update-settings', { winCondition: e.target.value });
-});
-document.getElementById('btn-start').onclick = () => {
-  if (!currentRoom.gameType) return notify('Choisissez un jeu !', 'error');
-  socket.emit('start-game');
-};
-document.getElementById('btn-leave').onclick = () => {
-  socket.emit('leave-room');
-  currentRoom = null;
-  showScreen('home');
-};
-document.getElementById('btn-back-lobby').onclick = () => {
-  socket.emit('back-to-lobby');
-};
+document.getElementById('game-select').addEventListener('click', e => { const b = e.target.closest('.game-option'); if (b) socket.emit('update-settings', { gameType: b.dataset.game }); });
+document.getElementById('start-money').addEventListener('change', e => socket.emit('update-settings', { startMoney: parseInt(e.target.value) }));
+document.getElementById('win-condition').addEventListener('change', e => socket.emit('update-settings', { winCondition: e.target.value }));
+document.getElementById('btn-start').onclick = () => { if (!currentRoom.gameType) return notify('Choisissez un jeu !', 'error'); socket.emit('start-game'); };
+document.getElementById('btn-leave').onclick = () => { socket.emit('leave-room'); currentRoom = null; showScreen('home'); };
+document.getElementById('btn-back-lobby').onclick = () => socket.emit('back-to-lobby');
 
-socket.on('back-to-lobby', () => {
-  showScreen('lobby');
-  currentGame = null;
-  clearResultsState();
-  document.getElementById('session-end-overlay').classList.add('hidden');
-});
+socket.on('back-to-lobby', () => { showScreen('lobby'); currentGame = null; clearResultsState(); document.getElementById('session-end-overlay').classList.add('hidden'); });
 
 // ===== GAME =====
-const GAME_NAMES = { blackjack: '🃏 Blackjack', poker: '♠️ Poker Texas Hold\'em', ultimate: '💎 Ultimate Poker', roulette: '🎡 Roulette' };
-
-socket.on('game-started', ({ gameType }) => {
-  currentGame = gameType;
-  betAmount = 0;
-  clearResultsState();
-  showScreen('game');
-  document.getElementById('game-type-label').textContent = GAME_NAMES[gameType] || gameType;
-  document.getElementById('game-room-label').textContent = `Salle ${currentRoom.id}`;
-});
-
-socket.on('game-update', (state) => {
-  if (!currentGame) return;
-  if (state.isHost !== undefined) isHost = state.isHost;
-  if (state.allPlayers) updatePlayersBar(state.allPlayers);
-  const me = state.players?.find(p => p.id === socket.id);
-  if (me) document.getElementById('my-money').textContent = `${me.money} €`;
-  renderGame(state);
-});
-
-// Session end
-socket.on('session-ended', ({ reason, players }) => {
-  const overlay = document.getElementById('session-end-overlay');
-  const title = document.getElementById('session-end-title');
-  const body = document.getElementById('session-end-body');
-  let msg = '';
-  if (reason.type === 'zero') msg = `💀 ${reason.player} est tombé à 0 € !`;
-  else msg = `🎉 ${reason.player} a atteint ${reason.type.toUpperCase()} (${reason.amount} €) !`;
-  title.textContent = '🏆 Fin de la session !';
-  body.innerHTML = `
-    <p style="margin-bottom:16px;font-size:1.1rem">${msg}</p>
-    ${players.sort((a, b) => b.money - a.money).map((p, i) => `
-      <div class="result-item">
-        <span>${i === 0 ? '👑 ' : ''}${p.name}</span>
-        <span class="gold" style="font-weight:700">${p.money} €</span>
-      </div>
-    `).join('')}
-  `;
-  overlay.classList.remove('hidden');
-});
-
-socket.on('connect', () => {
-  myId = socket.id;
-  document.getElementById('session-end-overlay').classList.add('hidden');
-});
+const GAME_NAMES = { blackjack:'🃏 Blackjack', poker:'♠️ Poker Texas Hold\'em', ultimate:'💎 Ultimate Poker', roulette:'🎡 Roulette' };
+socket.on('game-started', ({ gameType }) => { currentGame = gameType; betAmount = 0; tripsBet = 0; clearResultsState(); showScreen('game'); document.getElementById('game-type-label').textContent = GAME_NAMES[gameType]||gameType; document.getElementById('game-room-label').textContent = `Salle ${currentRoom.id}`; });
+socket.on('game-update', (state) => { if (!currentGame) return; if (state.isHost !== undefined) isHost = state.isHost; if (state.allPlayers) updatePlayersBar(state.allPlayers); const me = state.players?.find(p => p.id === socket.id); if (me) document.getElementById('my-money').textContent = `${me.money} €`; renderGame(state); });
+socket.on('session-ended', ({ reason, players }) => { const o = document.getElementById('session-end-overlay'); const t = document.getElementById('session-end-title'); const b = document.getElementById('session-end-body'); let m = reason.type === 'zero' ? `💀 ${reason.player} est tombé à 0€!` : `🎉 ${reason.player} a atteint ${reason.type.toUpperCase()} (${reason.amount}€)!`; t.textContent = '🏆 Fin de la session !'; b.innerHTML = `<p style="margin-bottom:16px;font-size:1.1rem">${m}</p>${players.sort((a,b)=>b.money-a.money).map((p,i)=>`<div class="result-item"><span>${i===0?'👑 ':''}${p.name}</span><span class="gold" style="font-weight:700">${p.money}€</span></div>`).join('')}`; o.classList.remove('hidden'); });
+socket.on('connect', () => { myId = socket.id; document.getElementById('session-end-overlay').classList.add('hidden'); });
 
 function renderGame(state) {
   const area = document.getElementById('game-area');
@@ -270,328 +200,220 @@ function renderGame(state) {
   }
 }
 
-// ===== RESULTS HELPER (host-only: change game / end session) =====
+// ===== RESULTS HELPER =====
 function resultsHTML(title, items) {
-  return `<div class="results-section">
-    <div class="results-card glass">
-      <h2>${title}</h2>
-      ${items}
-      <div class="results-actions">
-        <button class="btn btn-primary" onclick="nextRound()">Nouvelle manche</button>
-        ${isHost ? '<button class="btn btn-ghost" onclick="socket.emit(\'back-to-lobby\')">Changer de jeu</button>' : ''}
-        ${isHost ? '<button class="btn btn-danger btn-sm" onclick="socket.emit(\'end-session\')">Fin de session</button>' : ''}
-      </div>
+  return `<div class="results-section"><div class="results-card glass"><h2>${title}</h2>${items}
+    <div class="results-actions">
+      <button class="btn btn-primary" onclick="nextRound()">Nouvelle manche</button>
+      ${isHost ? '<button class="btn btn-ghost" onclick="socket.emit(\'back-to-lobby\')">Changer de jeu</button>' : ''}
+      ${isHost ? '<button class="btn btn-danger btn-sm" onclick="socket.emit(\'end-session\')">Fin de session</button>' : ''}
+    </div></div></div>`;
+}
+window.nextRound = function() { clearResultsState(); rouletteBets = []; socket.emit('next-round'); };
+
+function turnBannerHTML(name, isMyTurn) {
+  return isMyTurn ? `<div class="turn-banner my-turn">🎯 C'est à VOUS de jouer !</div>` : `<div class="turn-banner waiting">⏳ ${name} est en train de jouer...</div>`;
+}
+
+// ===== 2D TABLE + PLAYER SEAT HELPERS =====
+function tableHTML(tableClass, dealerContent, centerContent, playerSeats) {
+  return `<div class="game-table ${tableClass}">
+    <div class="table-felt">
+      <div class="dealer-zone">${dealerContent}</div>
+      <div class="table-center">${centerContent}</div>
+      <div class="seats-zone">${playerSeats}</div>
     </div>
   </div>`;
 }
 
-window.nextRound = function() {
-  clearResultsState();
-  rouletteBets = [];
-  socket.emit('next-round');
-};
-
-// ===== TURN INDICATOR =====
-function turnBannerHTML(playerName, isMyTurn) {
-  if (isMyTurn) {
-    return `<div class="turn-banner my-turn">🎯 C'est à VOUS de jouer !</div>`;
-  }
-  return `<div class="turn-banner waiting">⏳ ${playerName} est en train de jouer...</div>`;
+function seatHTML(p, isMe, extra = '', badge = '') {
+  let cls = 'seat';
+  if (isMe) cls += ' seat-me';
+  if (p.status === 'bust' || p.status === 'folded') cls += ' seat-out';
+  if (p._isTurn) cls += ' seat-active';
+  return `<div class="${cls}">
+    ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
+    ${badge}
+    <div class="seat-name">${p.name}</div>
+    <div class="seat-money">${p.money} €</div>
+    ${extra}
+    <div class="seat-cards">${cardsHTML(p.hand)}</div>
+  </div>`;
 }
 
-// ===== BLACKJACK RENDER =====
+// ===== BLACKJACK =====
 function renderBlackjack(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
+  if (s.phase === 'betting' && me.status === 'betting') { clearResultsState(); area.innerHTML = betSectionHTML('💰 Placez votre mise'); ctrl.innerHTML = ''; return; }
+  if (s.phase === 'betting') { clearResultsState(); area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des mises...</div>'; ctrl.innerHTML = ''; return; }
 
-  if (s.phase === 'betting' && me.status === 'betting') {
-    clearResultsState();
-    area.innerHTML = betSectionHTML('💰 Placez votre mise');
-    ctrl.innerHTML = '';
-    return;
-  }
-  if (s.phase === 'betting') {
-    clearResultsState();
-    area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
-    ctrl.innerHTML = '';
-    return;
-  }
-
-  let html = '';
-
-  // Turn indicator
+  // Turn banner
+  let banner = '';
   if (s.phase === 'playing') {
-    const turnPlayer = s.players.find(p => p.id === s.currentPlayerId);
-    html += turnBannerHTML(turnPlayer?.name || '...', s.currentPlayerId === socket.id);
+    const tp = s.players.find(p => p.id === s.currentPlayerId);
+    banner = turnBannerHTML(tp?.name || '...', s.currentPlayerId === socket.id);
   }
 
-  // Dealer
-  html += `<div class="dealer-section">
-    <div class="section-label">Croupier</div>
-    ${cardsHTML(s.dealer.hand)}
-    <div class="hand-value">${s.dealer.handValue}</div>
-  </div>`;
+  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand)}<div class="hand-value">${s.dealer.handValue}</div>`;
 
-  // Players
-  html += '<div class="players-row">';
-  for (const p of s.players) {
+  const seats = s.players.map(p => {
     const isMe = p.id === socket.id;
-    const isTurn = p.id === s.currentPlayerId;
-    let cls = 'player-box';
-    if (isMe) cls += ' is-me';
-    if (isTurn) cls += ' active-turn';
-    if (p.status === 'bust') cls += ' bust';
-
-    html += `<div class="${cls}">
-      ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
-      <div class="p-name">${p.name}</div>
-      <div class="p-money">${p.money} €</div>
-      <div class="p-bet">Mise: ${p.bet} €</div>
-      ${cardsHTML(p.hand)}
-      <div class="hand-value">${p.handValue}</div>
+    p._isTurn = p.id === s.currentPlayerId && s.phase === 'playing';
+    const extra = `<div class="seat-bet">Mise: ${p.bet}€</div><div class="hand-value">${p.handValue}</div>
       ${p.status === 'bust' ? '<div class="p-status bust">BUST</div>' : ''}
-      ${p.status === 'blackjack' ? '<div class="p-status blackjack">BLACKJACK!</div>' : ''}
-    </div>`;
-  }
-  html += '</div>';
+      ${p.status === 'blackjack' ? '<div class="p-status blackjack">BLACKJACK!</div>' : ''}`;
+    return seatHTML(p, isMe, extra);
+  }).join('');
 
-  area.innerHTML = html;
+  area.innerHTML = banner + tableHTML('table-blackjack', dealerContent, '', seats);
 
-  // Results with delay
   if (s.phase === 'done' && s.results.length > 0 && !showingResults) {
     showingResults = true;
     resultsTimer = setTimeout(() => {
-      const area2 = document.getElementById('game-area');
-      if (!area2) return;
-      area2.innerHTML += resultsHTML('🎲 Résultats',
-        s.results.map(r => `
-          <div class="result-item">
-            <span>${r.name}</span>
-            <span class="${r.netGain > 0 ? 'win' : r.netGain < 0 ? 'lose' : 'push'}">
-              ${r.netGain > 0 ? '+' : ''}${r.netGain} € (${r.outcome})
-            </span>
-            <span class="muted">${r.money} €</span>
-          </div>
-        `).join(''));
+      const a = document.getElementById('game-area');
+      if (a) a.innerHTML += resultsHTML('🎲 Résultats', s.results.map(r => `<div class="result-item"><span>${r.name}</span><span class="${r.netGain > 0 ? 'win' : r.netGain < 0 ? 'lose' : 'push'}">${r.netGain > 0 ? '+' : ''}${r.netGain}€ (${r.outcome})</span><span class="muted">${r.money}€</span></div>`).join(''));
       document.getElementById('game-controls').innerHTML = '';
     }, 3000);
   }
 
   if (s.phase === 'playing' && s.currentPlayerId === socket.id) {
     const canDouble = me.hand.length === 2 && me.bet <= me.money;
-    ctrl.innerHTML = `
-      <button class="btn btn-primary" onclick="gameAction('hit')">🃏 Tirer</button>
+    ctrl.innerHTML = `<button class="btn btn-primary" onclick="gameAction('hit')">🃏 Tirer</button>
       <button class="btn btn-secondary" onclick="gameAction('stand')">✋ Rester</button>
-      ${canDouble ? '<button class="btn btn-success" onclick="gameAction(\'double\')">💰 Doubler</button>' : ''}
-    `;
-  } else if (s.phase === 'done' && showingResults) {
-    ctrl.innerHTML = '<span class="muted">Résultats dans un instant...</span>';
-  } else if (s.phase !== 'done') {
-    ctrl.innerHTML = '';
-  } else {
-    ctrl.innerHTML = '';
-  }
+      ${canDouble ? '<button class="btn btn-success" onclick="gameAction(\'double\')">💰 Doubler</button>' : ''}`;
+  } else if (s.phase === 'done' && showingResults) { ctrl.innerHTML = '<span class="muted">Résultats...</span>'; }
+  else { ctrl.innerHTML = ''; }
 }
 
 window.confirmBet = function() {
   if (betAmount <= 0) return notify('Mise trop faible', 'error');
-  socket.emit('game-action', { action: 'bet', data: { amount: betAmount } });
-  betAmount = 0;
+  if (currentGame === 'ultimate') {
+    socket.emit('game-action', { action: 'bet', data: { amount: betAmount, trips: tripsBet } });
+  } else {
+    socket.emit('game-action', { action: 'bet', data: { amount: betAmount } });
+  }
+  betAmount = 0; tripsBet = 0;
 };
-window.gameAction = function(action) {
-  socket.emit('game-action', { action, data: {} });
-};
+window.gameAction = function(action) { socket.emit('game-action', { action, data: {} }); };
 
-// ===== POKER RENDER =====
+// ===== POKER =====
 function renderPoker(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
   const isMyTurn = s.currentPlayerId === socket.id && me.status === 'active' && !s.roundOver;
-  let html = '';
+  const phaseLabels = { preflop:'PRÉ-FLOP', flop:'FLOP', turn:'TURN', river:'RIVER', showdown:'SHOWDOWN' };
 
-  // Blinds info
-  html += `<div class="poker-info-bar">
-    <span>Blinds: ${s.smallBlind}/${s.bigBlind} €</span>
-    <span class="pot-display">Pot: ${s.pot} €</span>
-  </div>`;
-
-  // Turn indicator
+  let banner = '';
   if (!s.roundOver) {
-    const turnPlayer = s.players.find(p => p.id === s.currentPlayerId);
-    if (turnPlayer) {
-      html += turnBannerHTML(turnPlayer.name, isMyTurn);
-    }
+    const tp = s.players.find(p => p.id === s.currentPlayerId);
+    if (tp) banner = turnBannerHTML(tp.name, isMyTurn);
   }
 
-  // Phase label
-  const phaseLabels = { preflop: 'PRÉ-FLOP', flop: 'FLOP', turn: 'TURN', river: 'RIVER', showdown: 'SHOWDOWN' };
-  html += `<div class="action-info">
-    ${phaseLabels[s.phase] || s.phase.toUpperCase()}
-    ${s.currentBet > 0 && !s.roundOver ? ` • Mise: ${s.currentBet} €` : ''}
-  </div>`;
+  const centerContent = `
+    <div class="poker-info-bar">
+      <span>Blinds: ${s.smallBlind}/${s.bigBlind}€</span>
+      <span style="color:var(--gold);font-weight:700;font-size:1.1rem">Pot: ${s.pot}€</span>
+      <span>${phaseLabels[s.phase] || s.phase.toUpperCase()}</span>
+    </div>
+    ${s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards)}</div>` : ''}`;
 
-  // Community cards
-  if (s.communityCards && s.communityCards.length > 0) {
-    html += `<div class="community-section">
-      <div class="section-label">Cartes communes</div>
-      ${cardsHTML(s.communityCards)}
-    </div>`;
-  }
-
-  // Players
-  html += '<div class="players-row">';
-  for (const p of s.players) {
-    if (p.status === 'out') continue;
+  const seats = s.players.filter(p => p.status !== 'out').map(p => {
     const isMe = p.id === socket.id;
-    const isTurn = p.id === s.currentPlayerId && !s.roundOver;
-    let cls = 'player-box';
-    if (isMe) cls += ' is-me';
-    if (isTurn) cls += ' active-turn';
-    if (p.status === 'folded') cls += ' folded';
-
-    // Role badge (D, SB, BB)
+    p._isTurn = p.id === s.currentPlayerId && !s.roundOver;
     const roleBadge = p.roleName ? `<div class="role-badge">${p.roleName}</div>` : '';
-
-    html += `<div class="${cls}">
-      ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
-      ${roleBadge}
-      <div class="p-name">${p.name}</div>
-      <div class="p-money">${p.money} €</div>
-      ${p.bet > 0 ? `<div class="p-bet">Mise: ${p.bet} €</div>` : ''}
-      ${cardsHTML(p.hand)}
+    const extra = `${p.bet > 0 ? `<div class="seat-bet">Mise: ${p.bet}€</div>` : ''}
       ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
       ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}
-      ${p.status === 'all-in' ? '<div class="p-status blackjack">ALL-IN</div>' : ''}
-    </div>`;
-  }
-  html += '</div>';
+      ${p.status === 'all-in' ? '<div class="p-status blackjack">ALL-IN</div>' : ''}`;
+    return seatHTML(p, isMe, extra, roleBadge);
+  }).join('');
 
-  area.innerHTML = html;
+  area.innerHTML = banner + tableHTML('table-poker', '', centerContent, seats);
 
-  // Showdown results (delayed)
   if (s.phase === 'showdown' && s.results.length > 0 && !showingResults) {
     showingResults = true;
     resultsTimer = setTimeout(() => {
-      const area2 = document.getElementById('game-area');
-      if (!area2) return;
-      area2.innerHTML += resultsHTML('🏆 Résultats',
-        s.results.map(r => `
-          <div class="result-item">
-            <span>${r.isWinner ? '👑 ' : ''}${r.name}</span>
-            <span>${r.bestHand ? r.bestHand.name : ''}</span>
-            <span class="${r.isWinner ? 'win' : 'muted'}">${r.money} €</span>
-          </div>
-        `).join(''));
+      const a = document.getElementById('game-area');
+      if (a) a.innerHTML += resultsHTML('🏆 Résultats', s.results.map(r => `<div class="result-item"><span>${r.isWinner ? '👑 ' : ''}${r.name}</span><span>${r.bestHand ? r.bestHand.name : ''}</span><span class="${r.isWinner ? 'win' : 'muted'}">${r.money}€</span></div>`).join(''));
       document.getElementById('game-controls').innerHTML = '';
     }, 3000);
   }
 
-  // Controls
   if (isMyTurn) {
     const toCall = s.currentBet - me.bet;
     const minRaise = s.currentBet + (s.minRaise || s.bigBlind);
-
     let btns = '';
-
-    if (toCall === 0) {
-      btns += `<button class="btn btn-secondary" onclick="pokerAction('check')">✋ Check</button>`;
-      btns += `<button class="btn btn-danger" onclick="pokerAction('fold')">❌ Coucher</button>`;
-    } else {
-      btns += `<button class="btn btn-secondary" onclick="pokerAction('call')">📞 Suivre (${toCall} €)</button>`;
-      btns += `<button class="btn btn-danger" onclick="pokerAction('fold')">❌ Coucher</button>`;
-    }
-
-    btns += `<div class="raise-row">
-      <input type="number" id="raise-amount" value="${minRaise}" min="${minRaise}" step="${s.bigBlind || 10}">
-      <button class="btn btn-success" onclick="pokerRaise()">💰 Relancer</button>
-    </div>`;
-    btns += `<button class="btn btn-primary" onclick="pokerAction('all-in')">🔥 All-In (${me.money} €)</button>`;
+    if (toCall === 0) { btns += `<button class="btn btn-secondary" onclick="pokerAction('check')">✋ Check</button>`; }
+    else { btns += `<button class="btn btn-secondary" onclick="pokerAction('call')">📞 Suivre (${toCall}€)</button>`; }
+    btns += `<button class="btn btn-danger" onclick="pokerAction('fold')">❌ Coucher</button>`;
+    btns += `<div class="raise-row"><input type="number" id="raise-amount" value="${minRaise}" min="${minRaise}" step="${s.bigBlind||10}"><button class="btn btn-success" onclick="pokerRaise()">💰 Relancer</button></div>`;
+    btns += `<button class="btn btn-primary" onclick="pokerAction('all-in')">🔥 All-In (${me.money}€)</button>`;
     ctrl.innerHTML = btns;
-  } else if (!s.roundOver) {
-    ctrl.innerHTML = '';
-  } else if (showingResults) {
-    ctrl.innerHTML = '<span class="muted">Résultats dans un instant...</span>';
-  } else {
-    ctrl.innerHTML = '';
-  }
+  } else if (showingResults) { ctrl.innerHTML = '<span class="muted">Résultats...</span>'; }
+  else { ctrl.innerHTML = ''; }
 }
+window.pokerAction = function(t) { socket.emit('game-action', { action: 'poker-action', data: { type: t } }); };
+window.pokerRaise = function() { const a = parseInt(document.getElementById('raise-amount')?.value||0); socket.emit('game-action', { action:'poker-action', data:{ type:'raise', amount: a } }); };
 
-window.pokerAction = function(type) {
-  socket.emit('game-action', { action: 'poker-action', data: { type } });
-};
-window.pokerRaise = function() {
-  const amount = parseInt(document.getElementById('raise-amount')?.value || 0);
-  socket.emit('game-action', { action: 'poker-action', data: { type: 'raise', amount } });
-};
-
-// ===== ULTIMATE RENDER =====
+// ===== ULTIMATE POKER =====
 function renderUltimate(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
 
   if (s.phase === 'betting' && me.status === 'betting') {
     clearResultsState();
-    area.innerHTML = betSectionHTML('💎 Mise Ante & Blind', 'La mise Blind est égale à la mise Ante');
-    ctrl.innerHTML = '';
-    return;
-  }
-  if (s.phase === 'betting') {
-    clearResultsState();
-    area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
-    ctrl.innerHTML = '';
-    return;
-  }
-
-  let html = '';
-
-  // Dealer
-  html += `<div class="dealer-section">
-    <div class="section-label">Croupier</div>
-    ${cardsHTML(s.dealer.hand)}
-    ${s.dealer.bestHand ? `<div class="hand-value">${s.dealer.bestHand.name}</div>` : ''}
-  </div>`;
-
-  if (s.communityCards && s.communityCards.length > 0) {
-    html += `<div class="community-section">
-      <div class="section-label">Cartes communes</div>
-      ${cardsHTML(s.communityCards)}
+    area.innerHTML = betSectionHTML('💎 Ultimate Texas Hold\'em', 'Ante + Blind (égaux) + Trips bonus (optionnel)', true);
+    // Show paytable
+    area.innerHTML += `<div class="paytable-container glass">
+      <div class="paytable">
+        <h4>📋 Blind</h4>
+        <table><tr><td>Quinte Flush Royale</td><td class="gold">500:1</td></tr>
+        <tr><td>Quinte Flush</td><td class="gold">50:1</td></tr>
+        <tr><td>Carré</td><td class="gold">10:1</td></tr>
+        <tr><td>Full</td><td class="gold">3:1</td></tr>
+        <tr><td>Couleur</td><td class="gold">3:2</td></tr>
+        <tr><td>Quinte</td><td class="gold">1:1</td></tr>
+        <tr><td>Autre</td><td>Push</td></tr></table>
+      </div>
+      <div class="paytable">
+        <h4>🎲 Trips Bonus</h4>
+        <table><tr><td>Quinte Flush Royale</td><td class="gold">50:1</td></tr>
+        <tr><td>Quinte Flush</td><td class="gold">40:1</td></tr>
+        <tr><td>Carré</td><td class="gold">30:1</td></tr>
+        <tr><td>Full</td><td class="gold">8:1</td></tr>
+        <tr><td>Couleur</td><td class="gold">6:1</td></tr>
+        <tr><td>Quinte</td><td class="gold">5:1</td></tr>
+        <tr><td>Brelan</td><td class="gold">3:1</td></tr></table>
+      </div>
     </div>`;
+    ctrl.innerHTML = '';
+    return;
   }
+  if (s.phase === 'betting') { clearResultsState(); area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des mises...</div>'; ctrl.innerHTML = ''; return; }
 
-  html += '<div class="players-row">';
-  for (const p of s.players) {
+  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand)}${s.dealer.bestHand ? `<div class="hand-value">${s.dealer.bestHand.name}</div>` : ''}`;
+
+  const centerContent = s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards)}</div>` : '';
+
+  const seats = s.players.map(p => {
     const isMe = p.id === socket.id;
-    let cls = 'player-box';
-    if (isMe) cls += ' is-me';
-    if (p.status === 'folded') cls += ' folded';
-
-    html += `<div class="${cls}">
-      ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
-      <div class="p-name">${p.name}</div>
-      <div class="p-money">${p.money} €</div>
-      <div class="p-bet">Ante: ${p.ante} € | Blind: ${p.blind} € | Play: ${p.play} €</div>
-      ${cardsHTML(p.hand)}
+    p._isTurn = p.status === 'acting';
+    const extra = `<div class="seat-bets">
+        <span class="bet-spot">A:${p.ante}€</span>
+        <span class="bet-spot">B:${p.blind}€</span>
+        ${p.trips > 0 ? `<span class="bet-spot trips">T:${p.trips}€</span>` : ''}
+        ${p.play > 0 ? `<span class="bet-spot play">P:${p.play}€</span>` : ''}
+      </div>
       ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
-      ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}
-    </div>`;
-  }
-  html += '</div>';
+      ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}`;
+    return seatHTML(p, isMe, extra);
+  }).join('');
 
-  area.innerHTML = html;
+  area.innerHTML = tableHTML('table-ultimate', dealerContent, centerContent, seats);
 
-  // Results (delayed)
   if (s.phase === 'done' && s.results.length > 0 && !showingResults) {
     showingResults = true;
     resultsTimer = setTimeout(() => {
-      const area2 = document.getElementById('game-area');
-      if (!area2) return;
-      area2.innerHTML += resultsHTML('💎 Résultats',
-        s.results.map(r => `
-          <div class="result-item">
-            <span>${r.name}</span>
-            <span class="${r.winnings > 0 ? 'win' : r.winnings < 0 ? 'lose' : 'push'}">
-              ${r.winnings > 0 ? '+' : ''}${r.winnings} € (${r.outcome})
-            </span>
-            <span class="muted">${r.money} €</span>
-          </div>
-        `).join(''));
+      const a = document.getElementById('game-area');
+      if (a) a.innerHTML += resultsHTML('💎 Résultats', s.results.map(r => `<div class="result-item"><span>${r.name}</span><span class="${r.winnings > 0 ? 'win' : r.winnings < 0 ? 'lose' : 'push'}">${r.winnings > 0 ? '+' : ''}${r.winnings}€ (${r.outcome})</span>${r.tripsOutcome ? `<span class="muted">${r.tripsOutcome}</span>` : ''}<span class="muted">${r.money}€</span></div>`).join(''));
       document.getElementById('game-controls').innerHTML = '';
     }, 3000);
   }
@@ -600,37 +422,24 @@ function renderUltimate(s, area, ctrl) {
     let btns = '';
     switch (s.phase) {
       case 'preflop':
-        btns = `
-          <button class="btn btn-secondary" onclick="ultAction('check')">Check</button>
-          <button class="btn btn-success" onclick="ultAction('raise3')">Raise 3x (${me.ante * 3}€)</button>
-          <button class="btn btn-primary" onclick="ultAction('raise4')">Raise 4x (${me.ante * 4}€)</button>`;
-        break;
+        btns = `<button class="btn btn-secondary" onclick="ultAction('check')">Check</button>
+          <button class="btn btn-success" onclick="ultAction('raise3')">Raise 3x (${me.ante*3}€)</button>
+          <button class="btn btn-primary" onclick="ultAction('raise4')">Raise 4x (${me.ante*4}€)</button>`; break;
       case 'flop':
-        btns = `
-          <button class="btn btn-secondary" onclick="ultAction('check')">Check</button>
-          <button class="btn btn-success" onclick="ultAction('raise2')">Raise 2x (${me.ante * 2}€)</button>`;
-        break;
+        btns = `<button class="btn btn-secondary" onclick="ultAction('check')">Check</button>
+          <button class="btn btn-success" onclick="ultAction('raise2')">Raise 2x (${me.ante*2}€)</button>`; break;
       case 'river':
-        btns = `
-          <button class="btn btn-danger" onclick="ultAction('fold')">Coucher</button>
-          <button class="btn btn-primary" onclick="ultAction('raise1')">Raise 1x (${me.ante}€)</button>`;
-        break;
+        btns = `<button class="btn btn-danger" onclick="ultAction('fold')">Coucher</button>
+          <button class="btn btn-primary" onclick="ultAction('raise1')">Raise 1x (${me.ante}€)</button>`; break;
     }
     ctrl.innerHTML = btns;
-  } else if (s.phase === 'done' && showingResults) {
-    ctrl.innerHTML = '<span class="muted">Résultats dans un instant...</span>';
-  } else if (s.phase !== 'done') {
-    ctrl.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
-  } else {
-    ctrl.innerHTML = '';
-  }
+  } else if (s.phase === 'done' && showingResults) { ctrl.innerHTML = '<span class="muted">Résultats...</span>'; }
+  else if (s.phase !== 'done') { ctrl.innerHTML = '<div class="turn-banner waiting">⏳ En attente...</div>'; }
+  else { ctrl.innerHTML = ''; }
 }
+window.ultAction = function(t) { socket.emit('game-action', { action: 'action', data: { type: t } }); };
 
-window.ultAction = function(type) {
-  socket.emit('game-action', { action: 'action', data: { type } });
-};
-
-// ===== ROULETTE RENDER =====
+// ===== ROULETTE =====
 let rouletteBets = [];
 let rouletteChipValue = 10;
 
@@ -640,151 +449,46 @@ function renderRoulette(s, area, ctrl) {
   if (s.phase === 'done') {
     showingResults = true;
     const isRed = REDS.includes(s.result);
-
-    let html = `
-      <div class="roulette-result-display" style="
-        width:120px;height:120px;border-radius:50%;display:flex;align-items:center;
-        justify-content:center;margin:0 auto;font-size:2.5rem;font-weight:800;
-        background:${s.result === 0 ? '#27ae60' : isRed ? '#c0392b' : '#2c3e50'};
-        box-shadow:0 0 30px ${s.result === 0 ? 'rgba(39,174,96,0.5)' : isRed ? 'rgba(192,57,43,0.5)' : 'rgba(44,62,80,0.5)'}">
-        ${s.result}
-      </div>
-      ${(() => {
-        const myResult = s.results.find(r => r.id === socket.id);
-        return myResult ? `<p style="font-size:1.3rem;margin-top:12px;font-weight:700;color:${myResult.totalWin >= 0 ? 'var(--green2)' : 'var(--red)'}">
-          ${myResult.totalWin >= 0 ? '+' : ''}${myResult.totalWin} €</p>` : '';
-      })()}
-    `;
-
-    if (s.history.length > 0) {
-      html += '<div class="roulette-history">';
-      for (const n of s.history) {
-        const c = n === 0 ? 'r-green' : REDS.includes(n) ? 'r-red' : 'r-black';
-        html += `<div class="history-num ${c}">${n}</div>`;
-      }
-      html += '</div>';
-    }
-
-    html += resultsHTML('🎲 Résultats',
-      s.results.map(r => `
-        <div class="result-item">
-          <span>${r.name}</span>
-          <span class="${r.totalWin >= 0 ? 'win' : 'lose'}">${r.totalWin >= 0 ? '+' : ''}${r.totalWin} €</span>
-          <span class="muted">${r.money} €</span>
-        </div>
-      `).join(''));
-
-    area.innerHTML = html;
-    ctrl.innerHTML = '';
-    return;
+    let html = `<div class="roulette-result-display" style="width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto;font-size:2.5rem;font-weight:800;background:${s.result===0?'#27ae60':isRed?'#c0392b':'#2c3e50'};box-shadow:0 0 30px ${s.result===0?'rgba(39,174,96,0.5)':isRed?'rgba(192,57,43,0.5)':'rgba(44,62,80,0.5)'}">${s.result}</div>`;
+    const myR = s.results.find(r => r.id === socket.id);
+    if (myR) html += `<p style="font-size:1.3rem;margin-top:12px;font-weight:700;color:${myR.totalWin>=0?'var(--green2)':'var(--red)'}">${myR.totalWin>=0?'+':''}${myR.totalWin}€</p>`;
+    if (s.history.length > 0) { html += '<div class="roulette-history">'; for (const n of s.history) { html += `<div class="history-num ${n===0?'r-green':REDS.includes(n)?'r-red':'r-black'}">${n}</div>`; } html += '</div>'; }
+    html += resultsHTML('🎲 Résultats', s.results.map(r => `<div class="result-item"><span>${r.name}</span><span class="${r.totalWin>=0?'win':'lose'}">${r.totalWin>=0?'+':''}${r.totalWin}€</span><span class="muted">${r.money}€</span></div>`).join(''));
+    area.innerHTML = html; ctrl.innerHTML = ''; return;
   }
-
   clearResultsState();
+  if (s.phase === 'betting' && me.status !== 'betting') { area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>'; ctrl.innerHTML = ''; return; }
 
-  if (s.phase === 'betting' && me.status !== 'betting') {
-    area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
-    ctrl.innerHTML = '';
-    return;
-  }
-
-  let html = '';
-
-  html += `<div style="margin-bottom:12px;display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap">
-    <span class="muted">Jeton:</span>
-    ${[10,25,50,100,500].map(v => `
-      <div class="chip c${Math.min(v,500)} ${rouletteChipValue===v?'selected':''}" 
-           onclick="setRChip(${v})" style="${rouletteChipValue===v?'transform:scale(1.2)':''}">
-        ${v}
-      </div>
-    `).join('')}
-  </div>`;
-
-  html += `<div class="bet-manual-input" style="margin-bottom:8px">
-    <span class="muted">ou saisir:</span>
-    <input type="number" id="roulette-manual-chip" value="${rouletteChipValue}" min="1" style="width:80px" onchange="setRChipManual()">
-    <span class="currency">€</span>
-  </div>`;
-
-  const totalBet = rouletteBets.reduce((sum, b) => sum + b.amount, 0);
-  html += `<div style="text-align:center;margin-bottom:10px"><span class="muted">Total misé:</span> <span class="gold" style="font-weight:700">${totalBet} €</span></div>`;
-
-  if (s.history && s.history.length > 0) {
-    html += '<div class="roulette-history" style="margin-bottom:12px">';
-    for (const n of s.history) {
-      const c = n === 0 ? 'r-green' : REDS.includes(n) ? 'r-red' : 'r-black';
-      html += `<div class="history-num ${c}">${n}</div>`;
-    }
-    html += '</div>';
-  }
-
-  html += '<div style="max-width:500px;width:100%">';
-  html += `<div class="roulette-number r-green" onclick="rBet('straight',0)" style="width:100%;text-align:center;margin-bottom:4px;padding:12px;border-radius:6px;cursor:pointer;font-weight:700;font-size:1.1rem">0</div>`;
-
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-bottom:8px">';
-  for (let i = 1; i <= 36; i++) {
-    const ir = REDS.includes(i);
-    const cls = ir ? 'r-red' : 'r-black';
-    const hasBet = rouletteBets.some(b => b.type === 'straight' && b.value === i);
-    html += `<div class="roulette-number ${cls} ${hasBet?'selected':''}" onclick="rBet('straight',${i})">${i}</div>`;
-  }
+  let html = `<div style="margin-bottom:12px;display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap"><span class="muted">Jeton:</span>`;
+  [10,25,50,100,500].forEach(v => { html += `<div class="chip c${Math.min(v,500)} ${rouletteChipValue===v?'selected':''}" onclick="setRChip(${v})" style="${rouletteChipValue===v?'transform:scale(1.2)':''}">${v}</div>`; });
   html += '</div>';
+  html += `<div class="bet-manual-input" style="margin-bottom:8px"><span class="muted">ou saisir:</span><input type="number" id="roulette-manual-chip" value="${rouletteChipValue}" min="1" style="width:80px" onchange="setRChipManual()"><span class="currency">€</span></div>`;
+  const totalBet = rouletteBets.reduce((s,b)=>s+b.amount,0);
+  html += `<div style="text-align:center;margin-bottom:10px"><span class="muted">Total:</span> <span class="gold" style="font-weight:700">${totalBet}€</span></div>`;
+  if (s.history?.length > 0) { html += '<div class="roulette-history" style="margin-bottom:12px">'; for (const n of s.history) { html += `<div class="history-num ${n===0?'r-green':REDS.includes(n)?'r-red':'r-black'}">${n}</div>`; } html += '</div>'; }
 
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:4px">';
-  html += `<div class="roulette-outside" onclick="rBet('dozen1',0)">1-12</div>`;
-  html += `<div class="roulette-outside" onclick="rBet('dozen2',0)">13-24</div>`;
-  html += `<div class="roulette-outside" onclick="rBet('dozen3',0)">25-36</div>`;
+  html += '<div class="roulette-table"><div class="roulette-grid">';
+  html += `<div class="roulette-number r-green roulette-zero" onclick="rBet('straight',0)">0</div>`;
+  html += '<div class="roulette-numbers-grid">';
+  for (let i = 1; i <= 36; i++) { const hasBet = rouletteBets.some(b => b.type==='straight'&&b.value===i); html += `<div class="roulette-number ${REDS.includes(i)?'r-red':'r-black'} ${hasBet?'selected':''}" onclick="rBet('straight',${i})">${i}</div>`; }
   html += '</div>';
-
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:4px">';
-  html += `<div class="roulette-outside" onclick="rBet('col1',0)">Col 1</div>`;
-  html += `<div class="roulette-outside" onclick="rBet('col2',0)">Col 2</div>`;
-  html += `<div class="roulette-outside" onclick="rBet('col3',0)">Col 3</div>`;
-  html += '</div>';
-
-  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:4px">';
-  html += `<div class="roulette-outside" style="background:rgba(192,57,43,0.3)" onclick="rBet('red',0)">🔴 Rouge</div>`;
-  html += `<div class="roulette-outside" style="background:rgba(44,62,80,0.5)" onclick="rBet('black',0)">⚫ Noir</div>`;
-  html += '</div>';
-
-  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:4px">';
-  html += `<div class="roulette-outside" onclick="rBet('even',0)">Pair</div>`;
-  html += `<div class="roulette-outside" onclick="rBet('odd',0)">Impair</div>`;
-  html += '</div>';
-
-  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px">';
-  html += `<div class="roulette-outside" onclick="rBet('low',0)">1-18</div>`;
-  html += `<div class="roulette-outside" onclick="rBet('high',0)">19-36</div>`;
-  html += '</div>';
-
-  html += '</div>';
-
+  html += `<div class="roulette-outside-grid">
+    <div class="roulette-outside" onclick="rBet('dozen1',0)">1-12</div><div class="roulette-outside" onclick="rBet('dozen2',0)">13-24</div><div class="roulette-outside" onclick="rBet('dozen3',0)">25-36</div>
+    <div class="roulette-outside" onclick="rBet('col1',0)">Col 1</div><div class="roulette-outside" onclick="rBet('col2',0)">Col 2</div><div class="roulette-outside" onclick="rBet('col3',0)">Col 3</div>
+    <div class="roulette-outside" style="background:rgba(192,57,43,0.3)" onclick="rBet('red',0)">🔴 Rouge</div><div class="roulette-outside" style="background:rgba(44,62,80,0.5)" onclick="rBet('black',0)">⚫ Noir</div>
+    <div class="roulette-outside" onclick="rBet('even',0)">Pair</div><div class="roulette-outside" onclick="rBet('odd',0)">Impair</div>
+    <div class="roulette-outside" onclick="rBet('low',0)">1-18</div><div class="roulette-outside" onclick="rBet('high',0)">19-36</div>
+  </div></div></div>`;
   area.innerHTML = html;
-
-  ctrl.innerHTML = `
-    <button class="btn btn-ghost" onclick="rClear()">Effacer</button>
-    <button class="btn btn-primary" onclick="rConfirm()">Confirmer les mises</button>
-  `;
+  ctrl.innerHTML = `<button class="btn btn-ghost" onclick="rClear()">Effacer</button><button class="btn btn-primary" onclick="rConfirm()">Confirmer les mises</button>`;
 }
 
-window.setRChip = function(val) { rouletteChipValue = val; };
-window.setRChipManual = function() {
-  const v = parseInt(document.getElementById('roulette-manual-chip')?.value || 10);
-  if (v > 0) rouletteChipValue = v;
-};
-window.rBet = function(type, value) {
-  rouletteBets.push({ type, value, amount: rouletteChipValue });
-  socket.emit('game-action', { action: 'place-bet', data: { betType: type, betValue: value, amount: rouletteChipValue } });
-};
-window.rClear = function() {
-  rouletteBets = [];
-  socket.emit('game-action', { action: 'clear-bets', data: {} });
-};
-window.rConfirm = function() {
-  if (rouletteBets.length === 0) return notify('Placez au moins une mise !', 'error');
-  socket.emit('game-action', { action: 'confirm-bets', data: {} });
-};
+window.setRChip = function(v) { rouletteChipValue = v; };
+window.setRChipManual = function() { const v = parseInt(document.getElementById('roulette-manual-chip')?.value||10); if (v>0) rouletteChipValue = v; };
+window.rBet = function(t,v) { rouletteBets.push({type:t,value:v,amount:rouletteChipValue}); socket.emit('game-action',{action:'place-bet',data:{betType:t,betValue:v,amount:rouletteChipValue}}); };
+window.rClear = function() { rouletteBets = []; socket.emit('game-action',{action:'clear-bets',data:{}}); };
+window.rConfirm = function() { if (rouletteBets.length===0) return notify('Placez au moins une mise !','error'); socket.emit('game-action',{action:'confirm-bets',data:{}}); };
 
-// ===== ERROR HANDLING =====
-socket.on('error-msg', (msg) => notify(msg, 'error'));
+socket.on('error-msg', msg => notify(msg, 'error'));
 socket.on('player-left', ({ message }) => notify(message, 'info'));
 socket.on('disconnect', () => notify('Connexion perdue !', 'error'));

@@ -1,37 +1,64 @@
 const Deck = require('./deck');
 const { getBestHand, compareHands } = require('./hand-evaluator');
 
+/**
+ * Ultimate Texas Hold'em - Official Rules
+ * 
+ * Betting spots: Ante, Blind (equal to Ante), Trips (optional bonus), Play
+ * 
+ * Flow:
+ * 1. Players place Ante + Blind (equal & mandatory) and optionally Trips
+ * 2. Deal 2 cards to each player and dealer
+ * 3. Pre-flop: Check or Raise 3x/4x Ante (Play bet)
+ * 4. Flop (3 community cards): Check or Raise 2x Ante
+ * 5. River (2 more cards): Fold or Raise 1x Ante
+ * 6. Showdown: Compare hands
+ * 
+ * Payouts:
+ * - Play: 1:1
+ * - Ante: 1:1 if dealer qualifies (pair or better), push otherwise
+ * - Blind: pays according to Blind paytable (only on wins)
+ * - Trips: pays regardless of win/loss according to Trips paytable
+ */
 class UltimateGame {
   constructor(players) {
     this.deck = new Deck();
     this.players = players.map(p => ({
       id: p.id, name: p.name, money: p.money,
-      hand: [], ante: 0, blind: 0, play: 0,
+      hand: [], ante: 0, blind: 0, trips: 0, play: 0,
       status: 'betting', hasRaised: false, bestHand: null
     }));
     this.dealer = { hand: [], bestHand: null };
     this.communityCards = [];
-    this.phase = 'betting';
+    this.phase = 'betting'; // betting, preflop, flop, river, done
     this.results = [];
   }
 
-  placeBet(playerId, amount) {
+  // Place Ante + Blind + optional Trips
+  placeBet(playerId, anteAmount, tripsAmount = 0) {
     const p = this.players.find(pl => pl.id === playerId);
     if (!p || this.phase !== 'betting') return false;
-    if (amount * 2 > p.money || amount <= 0) return false;
-    p.ante = amount;
-    p.blind = amount;
-    p.money -= amount * 2; // Deduct ante + blind
+    const totalNeeded = anteAmount * 2 + tripsAmount; // ante + blind + trips
+    if (totalNeeded > p.money || anteAmount <= 0) return false;
+    if (tripsAmount < 0) return false;
+    
+    p.ante = anteAmount;
+    p.blind = anteAmount; // Blind = Ante always
+    p.trips = tripsAmount;
+    p.money -= totalNeeded;
     p.status = 'ready';
+    
     if (this.players.every(pl => pl.status === 'ready')) this.dealInitial();
     return true;
   }
 
   dealInitial() {
+    // Deal 2 cards to each player and dealer
     for (let i = 0; i < 2; i++) {
       for (const p of this.players) p.hand.push(this.deck.deal());
       this.dealer.hand.push(this.deck.deal());
     }
+    // Pre-deal all 5 community cards (revealed progressively)
     this.communityCards = this.deck.deal(5);
     this.phase = 'preflop';
     for (const p of this.players) p.status = 'acting';
@@ -43,8 +70,9 @@ class UltimateGame {
 
     switch (this.phase) {
       case 'preflop':
-        if (action === 'check') { p.status = 'waiting'; }
-        else if (action === 'raise3') {
+        if (action === 'check') {
+          p.status = 'waiting';
+        } else if (action === 'raise3') {
           const r = p.ante * 3;
           if (r > p.money) return false;
           p.play = r; p.money -= r; p.hasRaised = true; p.status = 'done';
@@ -54,15 +82,18 @@ class UltimateGame {
           p.play = r; p.money -= r; p.hasRaised = true; p.status = 'done';
         } else return false;
         break;
+
       case 'flop':
         if (p.hasRaised) { p.status = 'done'; return true; }
-        if (action === 'check') { p.status = 'waiting'; }
-        else if (action === 'raise2') {
+        if (action === 'check') {
+          p.status = 'waiting';
+        } else if (action === 'raise2') {
           const r = p.ante * 2;
           if (r > p.money) return false;
           p.play = r; p.money -= r; p.hasRaised = true; p.status = 'done';
         } else return false;
         break;
+
       case 'river':
         if (p.hasRaised) { p.status = 'done'; return true; }
         if (action === 'fold') {
@@ -108,68 +139,113 @@ class UltimateGame {
     }
   }
 
+  // Official Blind Paytable (pays only on player win)
   getBlindPay(rank) {
-    // Payout multiplier on blind bet for strong hands
-    if (rank >= 9) return 500; // Royal Flush
-    if (rank >= 8) return 50;  // Straight Flush
-    if (rank >= 7) return 10;  // Four of a Kind
-    if (rank >= 6) return 3;   // Full House
-    if (rank >= 5) return 1.5; // Flush
-    if (rank >= 4) return 1;   // Straight
-    return 0; // Trips or lower: blind pushes (returns bet)
+    switch (rank) {
+      case 9: return 500;  // Royal Flush
+      case 8: return 50;   // Straight Flush
+      case 7: return 10;   // Four of a Kind
+      case 6: return 3;    // Full House
+      case 5: return 1.5;  // Flush
+      case 4: return 1;    // Straight
+      default: return 0;   // Trips or lower → push (returns blind)
+    }
+  }
+
+  // Official Trips Bonus Paytable (pays regardless of dealer hand)
+  getTripsPay(rank) {
+    switch (rank) {
+      case 9: return 50;   // Royal Flush
+      case 8: return 40;   // Straight Flush
+      case 7: return 30;   // Four of a Kind
+      case 6: return 8;    // Full House
+      case 5: return 6;    // Flush
+      case 4: return 5;    // Straight
+      case 3: return 3;    // Three of a Kind
+      default: return -1;  // Lose trips bet
+    }
   }
 
   resolve() {
     this.phase = 'done';
-    const allCards = this.communityCards;
-    this.dealer.bestHand = getBestHand([...this.dealer.hand, ...allCards]);
+    this.dealer.bestHand = getBestHand([...this.dealer.hand, ...this.communityCards]);
     // Dealer qualifies with a pair or better
     const dealerQualifies = this.dealer.bestHand.rank >= 1;
 
     this.results = [];
     for (const p of this.players) {
-      const r = { id: p.id, name: p.name };
+      const r = { id: p.id, name: p.name, ante: p.ante, blind: p.blind, trips: p.trips, play: p.play };
+
+      // === TRIPS BONUS (always pays based on player hand, regardless of win/loss) ===
+      let tripsResult = 0;
+      let tripsOutcome = '';
       
       if (p.status === 'folded') {
-        // Folded: lose ante + blind (already deducted)
+        // Folded: lose ante + blind, keep no refund. Trips still evaluated.
+        if (p.trips > 0) {
+          p.bestHand = getBestHand([...p.hand, ...this.communityCards]);
+          const tripsMult = this.getTripsPay(p.bestHand.rank);
+          if (tripsMult >= 0) {
+            tripsResult = Math.floor(p.trips * tripsMult);
+            p.money += p.trips + tripsResult; // return trips + winnings
+            tripsOutcome = `Trips: +${tripsResult}€`;
+          } else {
+            tripsOutcome = 'Trips: perdu';
+          }
+        }
         r.outcome = 'fold';
-        r.winnings = -(p.ante + p.blind);
+        r.winnings = -(p.ante + p.blind) + tripsResult;
+        r.tripsOutcome = tripsOutcome;
         r.money = p.money;
+        r.bestHand = p.bestHand;
         this.results.push(r);
         continue;
       }
 
-      p.bestHand = getBestHand([...p.hand, ...allCards]);
+      // Evaluate player hand
+      p.bestHand = getBestHand([...p.hand, ...this.communityCards]);
       const cmp = compareHands(p.bestHand, this.dealer.bestHand);
 
-      // Money was already deducted (ante + blind on placeBet, play on raise)
-      // We need to calculate what to return to the player
-      
-      if (cmp > 0) {
-        // PLAYER WINS
-        let payout = 0;
-        // Play bet: always paid 1:1 when winning
-        payout += p.play * 2; // return play + win
-        // Ante: paid 1:1 only if dealer qualifies, otherwise push (returned)
-        payout += dealerQualifies ? p.ante * 2 : p.ante; // return ante (+ win if qualifies)
-        // Blind: paid according to pay table
-        const blindMult = this.getBlindPay(p.bestHand.rank);
-        payout += p.blind + Math.floor(p.blind * blindMult); // return blind + bonus
-        
-        p.money += payout;
-        r.outcome = 'win';
-        r.winnings = payout - (p.ante + p.blind + p.play); // net gain
-      } else if (cmp === 0) {
-        // TIE: all bets push (returned)
-        p.money += p.ante + p.blind + p.play;
-        r.outcome = 'push';
-        r.winnings = 0;
-      } else {
-        // PLAYER LOSES: already deducted, nothing to return
-        r.outcome = 'lose';
-        r.winnings = -(p.ante + p.blind + p.play);
+      // Trips bonus (independent of win/loss vs dealer)
+      if (p.trips > 0) {
+        const tripsMult = this.getTripsPay(p.bestHand.rank);
+        if (tripsMult >= 0) {
+          tripsResult = Math.floor(p.trips * tripsMult);
+          p.money += p.trips + tripsResult;
+          tripsOutcome = `Trips: +${tripsResult}€`;
+        } else {
+          tripsOutcome = 'Trips: perdu';
+        }
       }
 
+      let payout = 0;
+
+      if (cmp > 0) {
+        // === PLAYER WINS ===
+        // Play: 1:1
+        payout += p.play * 2;
+        // Ante: 1:1 if dealer qualifies, push if not
+        payout += dealerQualifies ? p.ante * 2 : p.ante;
+        // Blind: pay according to blind paytable
+        const blindMult = this.getBlindPay(p.bestHand.rank);
+        if (blindMult > 0) {
+          payout += p.blind + Math.floor(p.blind * blindMult);
+        } else {
+          payout += p.blind; // Push: return blind
+        }
+        r.outcome = 'win';
+      } else if (cmp === 0) {
+        // === TIE: all bets push ===
+        payout += p.ante + p.blind + p.play;
+        r.outcome = 'push';
+      } else {
+        // === PLAYER LOSES: lose all bets ===
+        r.outcome = 'lose';
+      }
+
+      p.money += payout;
+      r.winnings = payout - (p.ante + p.blind + p.play) + tripsResult;
+      r.tripsOutcome = tripsOutcome;
       r.money = p.money;
       r.bestHand = p.bestHand;
       this.results.push(r);
@@ -189,7 +265,7 @@ class UltimateGame {
       },
       players: this.players.map(p => ({
         id: p.id, name: p.name, money: p.money,
-        hand: p.hand, ante: p.ante, blind: p.blind, play: p.play,
+        hand: p.hand, ante: p.ante, blind: p.blind, trips: p.trips, play: p.play,
         status: p.status, hasRaised: p.hasRaised,
         bestHand: this.phase === 'done' ? p.bestHand : null
       })),

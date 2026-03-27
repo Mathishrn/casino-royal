@@ -53,11 +53,38 @@ function updatePlayersBar(players) {
 }
 
 // ===== BET SECTION =====
-function betSectionHTML(title, subtitle = '', showTrips = false) {
+let lastBetAmount = 0;
+
+function betSectionHTML(title, subtitle = '', showBonus = false) {
   return `
     <div class="bet-section glass">
       <h3>${title}</h3>
       ${subtitle ? `<p class="muted" style="margin-bottom:12px">${subtitle}</p>` : ''}
+
+      ${showBonus ? `
+        <div class="ultimate-boxes">
+          <div class="ult-box">
+            <div class="ult-box-label">ANTE</div>
+            <input type="number" id="bet-manual" class="ult-box-input" value="${betAmount}" min="1" step="1" onchange="setBetFromInput()">
+          </div>
+          <div class="ult-box">
+            <div class="ult-box-label">BLIND</div>
+            <div class="ult-box-value" id="blind-display">= ${betAmount} €</div>
+          </div>
+          <div class="ult-box bonus">
+            <div class="ult-box-label">BONUS <span class="muted" style="font-size:0.7rem">(optionnel)</span></div>
+            <input type="number" id="trips-manual" class="ult-box-input" value="${tripsBet}" min="0" step="1" onchange="setTripsFromInput()">
+          </div>
+        </div>
+      ` : `
+        <div class="bet-amount" id="bet-display">${betAmount} €</div>
+        <div class="bet-manual-input">
+          <span class="muted">Mise:</span>
+          <input type="number" id="bet-manual" value="${betAmount}" min="1" step="1" onchange="setBetFromInput()">
+          <span class="currency">€</span>
+        </div>
+      `}
+
       <div class="bet-chips">
         <div class="chip c10" onclick="addBet(10)">10</div>
         <div class="chip c25" onclick="addBet(25)">25</div>
@@ -65,30 +92,18 @@ function betSectionHTML(title, subtitle = '', showTrips = false) {
         <div class="chip c100" onclick="addBet(100)">100</div>
         <div class="chip c500" onclick="addBet(500)">500</div>
       </div>
-      <div class="bet-amount" id="bet-display">${betAmount} €</div>
-      <div class="bet-manual-input">
-        <span class="muted">ou saisir Ante:</span>
-        <input type="number" id="bet-manual" value="${betAmount}" min="1" step="1" onchange="setBetFromInput()">
-        <span class="currency">€</span>
+
+      <div class="bet-quick-actions">
+        ${lastBetAmount > 0 ? `<button class="btn btn-sm btn-secondary" onclick="repeatBet()">🔁 Répéter (${lastBetAmount}€)</button>` : ''}
+        <button class="btn btn-sm btn-secondary" onclick="doubleBet()">x2</button>
+        <button class="btn btn-sm btn-secondary" onclick="halfBet()">÷2</button>
       </div>
-      ${showTrips ? `
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-          <p class="muted" style="margin-bottom:8px">🎲 Trips Bonus <span style="color:var(--gold)">(optionnel)</span></p>
-          <div class="bet-chips">
-            <div class="chip c10" onclick="addTrips(10)">10</div>
-            <div class="chip c25" onclick="addTrips(25)">25</div>
-            <div class="chip c50" onclick="addTrips(50)">50</div>
-          </div>
-          <div class="bet-manual-input">
-            <span class="muted">Trips:</span>
-            <input type="number" id="trips-manual" value="${tripsBet}" min="0" step="1" onchange="setTripsFromInput()">
-            <span class="currency">€</span>
-          </div>
-        </div>
-      ` : ''}
-      <div style="margin-top:12px;color:var(--muted);font-size:0.85rem">
-        ${showTrips ? `Total: <strong style="color:var(--gold)">${betAmount * 2 + tripsBet} €</strong> (Ante ${betAmount} + Blind ${betAmount}${tripsBet > 0 ? ` + Trips ${tripsBet}` : ''})` : ''}
-      </div>
+
+      ${showBonus ? `<div style="margin-top:8px;color:var(--muted);font-size:0.85rem;text-align:center">
+        Total: <strong style="color:var(--gold)">${betAmount * 2 + tripsBet} €</strong>
+        <span class="muted">(Ante ${betAmount} + Blind ${betAmount}${tripsBet > 0 ? ` + Bonus ${tripsBet}` : ''})</span>
+      </div>` : ''}
+
       <div class="bet-buttons">
         <button class="btn btn-ghost" onclick="resetBet()">Effacer</button>
         <button class="btn btn-primary" onclick="confirmBet()">Miser</button>
@@ -99,6 +114,9 @@ function betSectionHTML(title, subtitle = '', showTrips = false) {
 window.addBet = function(a) { betAmount += a; updateBetDisplay(); };
 window.resetBet = function() { betAmount = 0; tripsBet = 0; updateBetDisplay(); };
 window.addTrips = function(a) { tripsBet += a; updateBetDisplay(); };
+window.repeatBet = function() { if (lastBetAmount > 0) betAmount = lastBetAmount; updateBetDisplay(); };
+window.doubleBet = function() { if (betAmount > 0) betAmount *= 2; updateBetDisplay(); };
+window.halfBet = function() { if (betAmount >= 2) betAmount = Math.floor(betAmount / 2); updateBetDisplay(); };
 window.setBetFromInput = function() {
   const v = parseInt(document.getElementById('bet-manual')?.value || 0);
   if (v > 0) betAmount = v;
@@ -116,6 +134,8 @@ function updateBetDisplay() {
   if (inp) inp.value = betAmount;
   const ti = document.getElementById('trips-manual');
   if (ti) ti.value = tripsBet;
+  const bl = document.getElementById('blind-display');
+  if (bl) bl.textContent = `= ${betAmount} €`;
 }
 function clearResultsState() {
   showingResults = false;
@@ -305,6 +325,7 @@ function renderBlackjack(s, area, ctrl) {
 
 window.confirmBet = function() {
   if (betAmount <= 0) return notify('Mise trop faible', 'error');
+  lastBetAmount = betAmount; // Remember for repeat
   if (currentGame === 'ultimate') {
     socket.emit('game-action', { action: 'bet', data: { amount: betAmount, trips: tripsBet } });
   } else {
@@ -389,7 +410,7 @@ function renderUltimate(s, area, ctrl) {
 
   if (s.phase === 'betting' && me.status === 'betting') {
     clearResultsState();
-    area.innerHTML = betSectionHTML('💎 Ultimate Texas Hold\'em', 'Ante + Blind (égaux) + Trips bonus (optionnel)', true);
+    area.innerHTML = betSectionHTML('💎 Ultimate Texas Hold\'em', 'Ante + Blind (= Ante) + Bonus (optionnel)', true);
     // Show paytable
     area.innerHTML += `<div class="paytable-container glass">
       <div class="paytable">
@@ -403,7 +424,7 @@ function renderUltimate(s, area, ctrl) {
         <tr><td>Autre</td><td>Push</td></tr></table>
       </div>
       <div class="paytable">
-        <h4>🎲 Trips Bonus</h4>
+        <h4>🎲 Bonus</h4>
         <table><tr><td>Quinte Flush Royale</td><td class="gold">50:1</td></tr>
         <tr><td>Quinte Flush</td><td class="gold">40:1</td></tr>
         <tr><td>Carré</td><td class="gold">30:1</td></tr>
@@ -428,8 +449,8 @@ function renderUltimate(s, area, ctrl) {
     const extra = `<div class="seat-bets">
         <span class="bet-spot">A:${p.ante}€</span>
         <span class="bet-spot">B:${p.blind}€</span>
-        ${p.trips > 0 ? `<span class="bet-spot trips">T:${p.trips}€</span>` : ''}
-        ${p.play > 0 ? `<span class="bet-spot play">P:${p.play}€</span>` : ''}
+        ${p.trips > 0 ? `<span class="bet-spot trips">Bonus:${p.trips}€</span>` : ''}
+        ${p.play > 0 ? `<span class="bet-spot play">Play:${p.play}€</span>` : ''}
       </div>
       ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
       ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}`;

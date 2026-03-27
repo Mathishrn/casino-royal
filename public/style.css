@@ -644,3 +644,37 @@ input:focus { outline: none; border-color: var(--gold); }
 .stats-table td.win { color: var(--green2); }
 .stats-table td.lose { color: var(--red); }
 .stats-table tr:first-child td { background: rgba(212,175,55,0.08); }
+
+/* ===== BET QUICK ACTIONS ===== */
+.bet-quick-actions {
+  display: flex; gap: 8px; justify-content: center;
+  margin-top: 10px; flex-wrap: wrap;
+}
+
+/* ===== ULTIMATE 3-BOX LAYOUT ===== */
+.ultimate-boxes {
+  display: flex; gap: 12px; justify-content: center;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.ult-box {
+  background: rgba(0,0,0,0.3); border: 2px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 16px;
+  min-width: 100px; text-align: center;
+  transition: border-color 0.2s;
+}
+.ult-box:focus-within { border-color: var(--gold); }
+.ult-box.bonus { border-color: rgba(212,175,55,0.3); }
+.ult-box-label {
+  font-size: 0.7rem; font-weight: 700; color: var(--muted);
+  letter-spacing: 1.5px; margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.ult-box-input {
+  width: 80px !important; text-align: center !important;
+  font-size: 1.1rem !important; font-weight: 700 !important;
+  padding: 6px !important; background: rgba(0,0,0,0.4) !important;
+}
+.ult-box-value {
+  font-size: 1.1rem; font-weight: 700; color: var(--gold);
+  padding: 6px 0;
+}

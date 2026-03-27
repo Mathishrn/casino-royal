@@ -8,6 +8,7 @@ let currentGame = null;
 let betAmount = 0;
 let showingResults = false;
 let resultsTimer = null;
+let isHost = false;
 
 // ===== SCREEN MANAGEMENT =====
 function showScreen(name) {
@@ -52,7 +53,7 @@ function updatePlayersBar(players) {
   }).join('');
 }
 
-// ===== BET SECTION HELPER (with manual input) =====
+// ===== BET SECTION HELPER =====
 function betSectionHTML(title, subtitle = '') {
   return `
     <div class="bet-section glass">
@@ -78,16 +79,8 @@ function betSectionHTML(title, subtitle = '') {
     </div>`;
 }
 
-window.addBet = function(amount) {
-  betAmount += amount;
-  updateBetDisplay();
-};
-
-window.resetBet = function() {
-  betAmount = 0;
-  updateBetDisplay();
-};
-
+window.addBet = function(amount) { betAmount += amount; updateBetDisplay(); };
+window.resetBet = function() { betAmount = 0; updateBetDisplay(); };
 window.setBetFromInput = function() {
   const v = parseInt(document.getElementById('bet-manual')?.value || 0);
   if (v > 0) betAmount = v;
@@ -134,12 +127,14 @@ document.getElementById('room-code').addEventListener('keydown', e => {
 socket.on('room-joined', (room) => {
   currentRoom = room;
   myId = socket.id;
+  isHost = room.isHost;
   showScreen('lobby');
   updateLobby();
 });
 
 socket.on('room-update', (room) => {
   currentRoom = room;
+  isHost = room.isHost;
   updateLobby();
 });
 
@@ -147,7 +142,6 @@ function updateLobby() {
   const r = currentRoom;
   document.getElementById('lobby-room-id').textContent = r.id;
 
-  // Players list with money
   const pl = document.getElementById('lobby-players');
   pl.innerHTML = r.players.map(p => `
     <div class="player-item">
@@ -158,64 +152,55 @@ function updateLobby() {
     </div>
   `).join('');
 
-  const isHost = r.isHost;
-  document.getElementById('lobby-settings').classList.toggle('hidden', !isHost);
-  document.getElementById('lobby-settings-guest').classList.toggle('hidden', isHost);
+  document.getElementById('lobby-settings').classList.toggle('hidden', !r.isHost);
+  document.getElementById('lobby-settings-guest').classList.toggle('hidden', r.isHost);
 
   document.querySelectorAll('.game-option').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.game === r.gameType);
   });
 
   const btnStart = document.getElementById('btn-start');
-  btnStart.classList.toggle('hidden', !isHost);
-  if (isHost && r.gameType) btnStart.disabled = false;
+  btnStart.classList.toggle('hidden', !r.isHost);
+  if (r.isHost && r.gameType) btnStart.disabled = false;
 
   if (r.startMoney) document.getElementById('start-money').value = r.startMoney;
-
-  // Win condition
   const wcSel = document.getElementById('win-condition');
   if (wcSel && r.winCondition) wcSel.value = r.winCondition;
 
-  // Guest summary when not host
+  // Guest info
   const guestDiv = document.getElementById('lobby-settings-guest');
-  if (!isHost && guestDiv) {
+  if (!r.isHost && guestDiv) {
     const gameLabel = r.gameType ? { blackjack: 'Blackjack', poker: 'Poker', ultimate: 'Ultimate', roulette: 'Roulette' }[r.gameType] : 'non choisi';
     const condLabel = { none: 'Pas de limite', first_zero: 'Premier à 0€', first_x2: 'Premier à x2', first_x5: 'Premier à x5', first_x10: 'Premier à x10' }[r.winCondition] || 'Pas de limite';
     guestDiv.innerHTML = `
       <p class="muted">Jeu: <strong style="color:var(--gold)">${gameLabel}</strong></p>
       <p class="muted">Argent: <strong style="color:var(--gold)">${r.startMoney} €</strong></p>
       <p class="muted">Condition: <strong style="color:var(--gold)">${condLabel}</strong></p>
-      <p class="muted" style="margin-top:12px">En attente que l'hôte lance la partie...</p>
+      <p class="muted" style="margin-top:12px">⏳ En attente que l'hôte lance la partie...</p>
     `;
   }
 }
 
-// Game selection
 document.getElementById('game-select').addEventListener('click', (e) => {
   const btn = e.target.closest('.game-option');
   if (!btn) return;
   socket.emit('update-settings', { gameType: btn.dataset.game });
 });
-
 document.getElementById('start-money').addEventListener('change', (e) => {
   socket.emit('update-settings', { startMoney: parseInt(e.target.value) });
 });
-
 document.getElementById('win-condition').addEventListener('change', (e) => {
   socket.emit('update-settings', { winCondition: e.target.value });
 });
-
 document.getElementById('btn-start').onclick = () => {
   if (!currentRoom.gameType) return notify('Choisissez un jeu !', 'error');
   socket.emit('start-game');
 };
-
 document.getElementById('btn-leave').onclick = () => {
   socket.emit('leave-room');
   currentRoom = null;
   showScreen('home');
 };
-
 document.getElementById('btn-back-lobby').onclick = () => {
   socket.emit('back-to-lobby');
 };
@@ -241,12 +226,10 @@ socket.on('game-started', ({ gameType }) => {
 
 socket.on('game-update', (state) => {
   if (!currentGame) return;
-  // Update players bar with room-level money
+  if (state.isHost !== undefined) isHost = state.isHost;
   if (state.allPlayers) updatePlayersBar(state.allPlayers);
-  // Update my money in header
   const me = state.players?.find(p => p.id === socket.id);
   if (me) document.getElementById('my-money').textContent = `${me.money} €`;
-  
   renderGame(state);
 });
 
@@ -255,11 +238,9 @@ socket.on('session-ended', ({ reason, players }) => {
   const overlay = document.getElementById('session-end-overlay');
   const title = document.getElementById('session-end-title');
   const body = document.getElementById('session-end-body');
-
   let msg = '';
   if (reason.type === 'zero') msg = `💀 ${reason.player} est tombé à 0 € !`;
   else msg = `🎉 ${reason.player} a atteint ${reason.type.toUpperCase()} (${reason.amount} €) !`;
-
   title.textContent = '🏆 Fin de la session !';
   body.innerHTML = `
     <p style="margin-bottom:16px;font-size:1.1rem">${msg}</p>
@@ -281,7 +262,6 @@ socket.on('connect', () => {
 function renderGame(state) {
   const area = document.getElementById('game-area');
   const ctrl = document.getElementById('game-controls');
-
   switch (currentGame) {
     case 'blackjack': renderBlackjack(state, area, ctrl); break;
     case 'poker': renderPoker(state, area, ctrl); break;
@@ -290,7 +270,7 @@ function renderGame(state) {
   }
 }
 
-// ===== RESULTS HELPER =====
+// ===== RESULTS HELPER (host-only: change game / end session) =====
 function resultsHTML(title, items) {
   return `<div class="results-section">
     <div class="results-card glass">
@@ -298,8 +278,8 @@ function resultsHTML(title, items) {
       ${items}
       <div class="results-actions">
         <button class="btn btn-primary" onclick="nextRound()">Nouvelle manche</button>
-        <button class="btn btn-ghost" onclick="socket.emit('back-to-lobby')">Changer de jeu</button>
-        <button class="btn btn-danger btn-sm" onclick="socket.emit('end-session')">Fin de session</button>
+        ${isHost ? '<button class="btn btn-ghost" onclick="socket.emit(\'back-to-lobby\')">Changer de jeu</button>' : ''}
+        ${isHost ? '<button class="btn btn-danger btn-sm" onclick="socket.emit(\'end-session\')">Fin de session</button>' : ''}
       </div>
     </div>
   </div>`;
@@ -311,6 +291,14 @@ window.nextRound = function() {
   socket.emit('next-round');
 };
 
+// ===== TURN INDICATOR =====
+function turnBannerHTML(playerName, isMyTurn) {
+  if (isMyTurn) {
+    return `<div class="turn-banner my-turn">🎯 C'est à VOUS de jouer !</div>`;
+  }
+  return `<div class="turn-banner waiting">⏳ ${playerName} est en train de jouer...</div>`;
+}
+
 // ===== BLACKJACK RENDER =====
 function renderBlackjack(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
@@ -321,15 +309,20 @@ function renderBlackjack(s, area, ctrl) {
     ctrl.innerHTML = '';
     return;
   }
-
   if (s.phase === 'betting') {
     clearResultsState();
-    area.innerHTML = '<p class="muted" style="font-size:1.2rem">⏳ En attente des autres joueurs...</p>';
+    area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
     ctrl.innerHTML = '';
     return;
   }
 
   let html = '';
+
+  // Turn indicator
+  if (s.phase === 'playing') {
+    const turnPlayer = s.players.find(p => p.id === s.currentPlayerId);
+    html += turnBannerHTML(turnPlayer?.name || '...', s.currentPlayerId === socket.id);
+  }
 
   // Dealer
   html += `<div class="dealer-section">
@@ -344,11 +337,13 @@ function renderBlackjack(s, area, ctrl) {
     const isMe = p.id === socket.id;
     const isTurn = p.id === s.currentPlayerId;
     let cls = 'player-box';
+    if (isMe) cls += ' is-me';
     if (isTurn) cls += ' active-turn';
     if (p.status === 'bust') cls += ' bust';
 
     html += `<div class="${cls}">
-      <div class="p-name">${isMe ? '👤 ' : ''}${p.name}</div>
+      ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
+      <div class="p-name">${p.name}</div>
       <div class="p-money">${p.money} €</div>
       <div class="p-bet">Mise: ${p.bet} €</div>
       ${cardsHTML(p.hand)}
@@ -361,7 +356,7 @@ function renderBlackjack(s, area, ctrl) {
 
   area.innerHTML = html;
 
-  // Results BELOW cards with delay
+  // Results with delay
   if (s.phase === 'done' && s.results.length > 0 && !showingResults) {
     showingResults = true;
     resultsTimer = setTimeout(() => {
@@ -381,7 +376,6 @@ function renderBlackjack(s, area, ctrl) {
     }, 3000);
   }
 
-  // Controls
   if (s.phase === 'playing' && s.currentPlayerId === socket.id) {
     const canDouble = me.hand.length === 2 && me.bet <= me.money;
     ctrl.innerHTML = `
@@ -392,7 +386,7 @@ function renderBlackjack(s, area, ctrl) {
   } else if (s.phase === 'done' && showingResults) {
     ctrl.innerHTML = '<span class="muted">Résultats dans un instant...</span>';
   } else if (s.phase !== 'done') {
-    ctrl.innerHTML = '<span class="muted">En attente...</span>';
+    ctrl.innerHTML = '';
   } else {
     ctrl.innerHTML = '';
   }
@@ -403,7 +397,6 @@ window.confirmBet = function() {
   socket.emit('game-action', { action: 'bet', data: { amount: betAmount } });
   betAmount = 0;
 };
-
 window.gameAction = function(action) {
   socket.emit('game-action', { action, data: {} });
 };
@@ -411,16 +404,31 @@ window.gameAction = function(action) {
 // ===== POKER RENDER =====
 function renderPoker(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
-
-  // Reset results state on betting phases
-  if (s.phase !== 'showdown') {
-    // Don't clear mid-game, only pre-round
-  }
-
+  const isMyTurn = s.currentPlayerId === socket.id && me.status === 'active' && !s.roundOver;
   let html = '';
 
-  html += `<div class="pot-display">Pot: ${s.pot} €</div>`;
+  // Blinds info
+  html += `<div class="poker-info-bar">
+    <span>Blinds: ${s.smallBlind}/${s.bigBlind} €</span>
+    <span class="pot-display">Pot: ${s.pot} €</span>
+  </div>`;
 
+  // Turn indicator
+  if (!s.roundOver) {
+    const turnPlayer = s.players.find(p => p.id === s.currentPlayerId);
+    if (turnPlayer) {
+      html += turnBannerHTML(turnPlayer.name, isMyTurn);
+    }
+  }
+
+  // Phase label
+  const phaseLabels = { preflop: 'PRÉ-FLOP', flop: 'FLOP', turn: 'TURN', river: 'RIVER', showdown: 'SHOWDOWN' };
+  html += `<div class="action-info">
+    ${phaseLabels[s.phase] || s.phase.toUpperCase()}
+    ${s.currentBet > 0 && !s.roundOver ? ` • Mise: ${s.currentBet} €` : ''}
+  </div>`;
+
+  // Community cards
   if (s.communityCards && s.communityCards.length > 0) {
     html += `<div class="community-section">
       <div class="section-label">Cartes communes</div>
@@ -428,21 +436,24 @@ function renderPoker(s, area, ctrl) {
     </div>`;
   }
 
-  const phaseLabels = { preflop: 'PRÉ-FLOP', flop: 'FLOP', turn: 'TURN', river: 'RIVER', showdown: 'SHOWDOWN' };
-  html += `<div class="action-info">${phaseLabels[s.phase] || s.phase.toUpperCase()} ${s.currentBet > 0 ? `• Mise actuelle: ${s.currentBet} €` : ''}</div>`;
-
+  // Players
   html += '<div class="players-row">';
   for (const p of s.players) {
     if (p.status === 'out') continue;
     const isMe = p.id === socket.id;
-    const isTurn = p.id === s.currentPlayerId;
-    const isDlr = p.seatIndex === s.dealerIndex;
+    const isTurn = p.id === s.currentPlayerId && !s.roundOver;
     let cls = 'player-box';
+    if (isMe) cls += ' is-me';
     if (isTurn) cls += ' active-turn';
     if (p.status === 'folded') cls += ' folded';
 
+    // Role badge (D, SB, BB)
+    const roleBadge = p.roleName ? `<div class="role-badge">${p.roleName}</div>` : '';
+
     html += `<div class="${cls}">
-      <div class="p-name">${isDlr ? '🔘 ' : ''}${isMe ? '👤 ' : ''}${p.name}</div>
+      ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
+      ${roleBadge}
+      <div class="p-name">${p.name}</div>
       <div class="p-money">${p.money} €</div>
       ${p.bet > 0 ? `<div class="p-bet">Mise: ${p.bet} €</div>` : ''}
       ${cardsHTML(p.hand)}
@@ -473,24 +484,29 @@ function renderPoker(s, area, ctrl) {
     }, 3000);
   }
 
-  if (s.currentPlayerId === socket.id && me.status === 'active' && !s.roundOver) {
+  // Controls
+  if (isMyTurn) {
     const toCall = s.currentBet - me.bet;
     const minRaise = s.currentBet + (s.minRaise || s.bigBlind);
 
-    let btns = `<button class="btn btn-danger" onclick="pokerAction('fold')">Coucher</button>`;
+    let btns = '';
+
     if (toCall === 0) {
-      btns += `<button class="btn btn-secondary" onclick="pokerAction('check')">Check</button>`;
+      btns += `<button class="btn btn-secondary" onclick="pokerAction('check')">✋ Check</button>`;
+      btns += `<button class="btn btn-danger" onclick="pokerAction('fold')">❌ Coucher</button>`;
     } else {
-      btns += `<button class="btn btn-secondary" onclick="pokerAction('call')">Suivre (${toCall} €)</button>`;
+      btns += `<button class="btn btn-secondary" onclick="pokerAction('call')">📞 Suivre (${toCall} €)</button>`;
+      btns += `<button class="btn btn-danger" onclick="pokerAction('fold')">❌ Coucher</button>`;
     }
+
     btns += `<div class="raise-row">
       <input type="number" id="raise-amount" value="${minRaise}" min="${minRaise}" step="${s.bigBlind || 10}">
-      <button class="btn btn-success" onclick="pokerRaise()">Relancer</button>
+      <button class="btn btn-success" onclick="pokerRaise()">💰 Relancer</button>
     </div>`;
-    btns += `<button class="btn btn-primary" onclick="pokerAction('all-in')">All-In</button>`;
+    btns += `<button class="btn btn-primary" onclick="pokerAction('all-in')">🔥 All-In (${me.money} €)</button>`;
     ctrl.innerHTML = btns;
   } else if (!s.roundOver) {
-    ctrl.innerHTML = '<span class="muted">En attente...</span>';
+    ctrl.innerHTML = '';
   } else if (showingResults) {
     ctrl.innerHTML = '<span class="muted">Résultats dans un instant...</span>';
   } else {
@@ -501,7 +517,6 @@ function renderPoker(s, area, ctrl) {
 window.pokerAction = function(type) {
   socket.emit('game-action', { action: 'poker-action', data: { type } });
 };
-
 window.pokerRaise = function() {
   const amount = parseInt(document.getElementById('raise-amount')?.value || 0);
   socket.emit('game-action', { action: 'poker-action', data: { type: 'raise', amount } });
@@ -517,10 +532,9 @@ function renderUltimate(s, area, ctrl) {
     ctrl.innerHTML = '';
     return;
   }
-
   if (s.phase === 'betting') {
     clearResultsState();
-    area.innerHTML = '<p class="muted" style="font-size:1.2rem">⏳ En attente...</p>';
+    area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
     ctrl.innerHTML = '';
     return;
   }
@@ -534,7 +548,6 @@ function renderUltimate(s, area, ctrl) {
     ${s.dealer.bestHand ? `<div class="hand-value">${s.dealer.bestHand.name}</div>` : ''}
   </div>`;
 
-  // Community
   if (s.communityCards && s.communityCards.length > 0) {
     html += `<div class="community-section">
       <div class="section-label">Cartes communes</div>
@@ -542,15 +555,16 @@ function renderUltimate(s, area, ctrl) {
     </div>`;
   }
 
-  // Players
   html += '<div class="players-row">';
   for (const p of s.players) {
     const isMe = p.id === socket.id;
     let cls = 'player-box';
+    if (isMe) cls += ' is-me';
     if (p.status === 'folded') cls += ' folded';
 
     html += `<div class="${cls}">
-      <div class="p-name">${isMe ? '👤 ' : ''}${p.name}</div>
+      ${isMe ? '<div class="you-badge">VOUS</div>' : ''}
+      <div class="p-name">${p.name}</div>
       <div class="p-money">${p.money} €</div>
       <div class="p-bet">Ante: ${p.ante} € | Blind: ${p.blind} € | Play: ${p.play} €</div>
       ${cardsHTML(p.hand)}
@@ -584,7 +598,6 @@ function renderUltimate(s, area, ctrl) {
 
   if (me.status === 'acting' && s.phase !== 'done') {
     let btns = '';
-    const phaseLabels = { preflop: 'Pré-flop', flop: 'Flop', river: 'River' };
     switch (s.phase) {
       case 'preflop':
         btns = `
@@ -607,7 +620,7 @@ function renderUltimate(s, area, ctrl) {
   } else if (s.phase === 'done' && showingResults) {
     ctrl.innerHTML = '<span class="muted">Résultats dans un instant...</span>';
   } else if (s.phase !== 'done') {
-    ctrl.innerHTML = '<span class="muted">En attente...</span>';
+    ctrl.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
   } else {
     ctrl.innerHTML = '';
   }
@@ -669,12 +682,11 @@ function renderRoulette(s, area, ctrl) {
   clearResultsState();
 
   if (s.phase === 'betting' && me.status !== 'betting') {
-    area.innerHTML = '<p class="muted" style="font-size:1.2rem">⏳ En attente des autres joueurs...</p>';
+    area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des autres joueurs...</div>';
     ctrl.innerHTML = '';
     return;
   }
 
-  // Betting phase
   let html = '';
 
   html += `<div style="margin-bottom:12px;display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap">
@@ -687,7 +699,6 @@ function renderRoulette(s, area, ctrl) {
     `).join('')}
   </div>`;
 
-  // Manual chip input
   html += `<div class="bet-manual-input" style="margin-bottom:8px">
     <span class="muted">ou saisir:</span>
     <input type="number" id="roulette-manual-chip" value="${rouletteChipValue}" min="1" style="width:80px" onchange="setRChipManual()">
@@ -711,8 +722,8 @@ function renderRoulette(s, area, ctrl) {
 
   html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-bottom:8px">';
   for (let i = 1; i <= 36; i++) {
-    const isRed = REDS.includes(i);
-    const cls = isRed ? 'r-red' : 'r-black';
+    const ir = REDS.includes(i);
+    const cls = ir ? 'r-red' : 'r-black';
     const hasBet = rouletteBets.some(b => b.type === 'straight' && b.value === i);
     html += `<div class="roulette-number ${cls} ${hasBet?'selected':''}" onclick="rBet('straight',${i})">${i}</div>`;
   }
@@ -745,7 +756,7 @@ function renderRoulette(s, area, ctrl) {
   html += `<div class="roulette-outside" onclick="rBet('high',0)">19-36</div>`;
   html += '</div>';
 
-  html += '</div>'; // end max-width container
+  html += '</div>';
 
   area.innerHTML = html;
 
@@ -755,25 +766,19 @@ function renderRoulette(s, area, ctrl) {
   `;
 }
 
-window.setRChip = function(val) {
-  rouletteChipValue = val;
-};
-
+window.setRChip = function(val) { rouletteChipValue = val; };
 window.setRChipManual = function() {
   const v = parseInt(document.getElementById('roulette-manual-chip')?.value || 10);
   if (v > 0) rouletteChipValue = v;
 };
-
 window.rBet = function(type, value) {
   rouletteBets.push({ type, value, amount: rouletteChipValue });
   socket.emit('game-action', { action: 'place-bet', data: { betType: type, betValue: value, amount: rouletteChipValue } });
 };
-
 window.rClear = function() {
   rouletteBets = [];
   socket.emit('game-action', { action: 'clear-bets', data: {} });
 };
-
 window.rConfirm = function() {
   if (rouletteBets.length === 0) return notify('Placez au moins une mise !', 'error');
   socket.emit('game-action', { action: 'confirm-bets', data: {} });

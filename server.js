@@ -45,6 +45,8 @@ function broadcastGameState(roomId) {
         state.winCondition = room.winCondition;
         state.winValue = room.winValue;
         state.startMoney = room.startMoney;
+        state.isHost = p.id === room.hostId;
+        state.hostId = room.hostId;
       }
       sock.emit('game-update', state);
     }
@@ -153,7 +155,7 @@ io.on('connection', (socket) => {
     switch (room.gameType) {
       case 'blackjack': room.game = new BlackjackGame(playerData); break;
       case 'poker':
-        room.game = new PokerGame(playerData);
+        room.game = new PokerGame(playerData, room.startMoney);
         room.game.startRound(room.pokerDealerIdx || 0);
         break;
       case 'ultimate': room.game = new UltimateGame(playerData); break;
@@ -238,7 +240,7 @@ io.on('connection', (socket) => {
         break;
       case 'poker':
         room.pokerDealerIdx = ((room.pokerDealerIdx || 0) + 1) % room.players.length;
-        room.game = new PokerGame(playerData);
+        room.game = new PokerGame(playerData, room.startMoney);
         room.game.startRound(room.pokerDealerIdx);
         break;
       case 'ultimate':

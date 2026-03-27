@@ -420,6 +420,48 @@ function renderPoker(s, area, ctrl) {
 window.pokerAction = function(t) { socket.emit('game-action', { action: 'poker-action', data: { type: t } }); };
 window.pokerRaise = function() { const a = parseInt(document.getElementById('raise-amount')?.value||0); socket.emit('game-action', { action:'poker-action', data:{ type:'raise', amount: a } }); };
 
+function ultPaytablesLeft() {
+  return `<div class="paytable-side">
+    <div class="paytable compact">
+      <h4>💰 Ante</h4>
+      <table><tr><td>Si croupier qualifié</td><td class="gold">1:1</td></tr>
+      <tr><td>Sinon</td><td>Push</td></tr></table>
+      <p class="muted" style="font-size:0.6rem;margin-top:2px">Qualifié = Paire+</p>
+    </div>
+    <div class="paytable compact">
+      <h4>🎯 Play</h4>
+      <table><tr><td>Victoire</td><td class="gold">1:1</td></tr>
+      <tr><td>Égalité</td><td>Push</td></tr>
+      <tr><td>Défaite</td><td class="muted">Perdu</td></tr></table>
+    </div>
+  </div>`;
+}
+
+function ultPaytablesRight() {
+  return `<div class="paytable-side">
+    <div class="paytable compact">
+      <h4>📋 Blind</h4>
+      <table><tr><td>Royale</td><td class="gold">500:1</td></tr>
+      <tr><td>Q. Flush</td><td class="gold">50:1</td></tr>
+      <tr><td>Carré</td><td class="gold">10:1</td></tr>
+      <tr><td>Full</td><td class="gold">3:1</td></tr>
+      <tr><td>Couleur</td><td class="gold">3:2</td></tr>
+      <tr><td>Quinte</td><td class="gold">1:1</td></tr>
+      <tr><td>Autre</td><td>Push</td></tr></table>
+    </div>
+    <div class="paytable compact">
+      <h4>🎲 Bonus</h4>
+      <table><tr><td>Royale</td><td class="gold">50:1</td></tr>
+      <tr><td>Q. Flush</td><td class="gold">40:1</td></tr>
+      <tr><td>Carré</td><td class="gold">30:1</td></tr>
+      <tr><td>Full</td><td class="gold">8:1</td></tr>
+      <tr><td>Couleur</td><td class="gold">6:1</td></tr>
+      <tr><td>Quinte</td><td class="gold">5:1</td></tr>
+      <tr><td>Brelan</td><td class="gold">3:1</td></tr></table>
+    </div>
+  </div>`;
+}
+
 // ===== ULTIMATE POKER =====
 function renderUltimate(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
@@ -428,39 +470,9 @@ function renderUltimate(s, area, ctrl) {
     clearResultsState();
     area.innerHTML = betSectionHTML('💎 Ultimate Texas Hold\'em', 'Ante + Blind (= Ante) + Bonus (optionnel)', true);
     // Show paytable
-    area.innerHTML += `<div class="paytable-container glass">
-      <div class="paytable">
-        <h4>💰 Ante</h4>
-        <table><tr><td>Si croupier qualifié</td><td class="gold">1:1</td></tr>
-        <tr><td>Sinon</td><td>Push</td></tr></table>
-        <p class="muted" style="font-size:0.7rem;margin-top:4px">Qualifié = Paire+</p>
-      </div>
-      <div class="paytable">
-        <h4>📋 Blind</h4>
-        <table><tr><td>Quinte Flush Royale</td><td class="gold">500:1</td></tr>
-        <tr><td>Quinte Flush</td><td class="gold">50:1</td></tr>
-        <tr><td>Carré</td><td class="gold">10:1</td></tr>
-        <tr><td>Full</td><td class="gold">3:1</td></tr>
-        <tr><td>Couleur</td><td class="gold">3:2</td></tr>
-        <tr><td>Quinte</td><td class="gold">1:1</td></tr>
-        <tr><td>Autre</td><td>Push</td></tr></table>
-      </div>
-      <div class="paytable">
-        <h4>🎯 Play</h4>
-        <table><tr><td>Victoire</td><td class="gold">1:1</td></tr>
-        <tr><td>Égalité</td><td>Push</td></tr>
-        <tr><td>Défaite</td><td class="muted">Perdu</td></tr></table>
-      </div>
-      <div class="paytable">
-        <h4>🎲 Bonus</h4>
-        <table><tr><td>Quinte Flush Royale</td><td class="gold">50:1</td></tr>
-        <tr><td>Quinte Flush</td><td class="gold">40:1</td></tr>
-        <tr><td>Carré</td><td class="gold">30:1</td></tr>
-        <tr><td>Full</td><td class="gold">8:1</td></tr>
-        <tr><td>Couleur</td><td class="gold">6:1</td></tr>
-        <tr><td>Quinte</td><td class="gold">5:1</td></tr>
-        <tr><td>Brelan</td><td class="gold">3:1</td></tr></table>
-      </div>
+    area.innerHTML += `<div class="paytable-container glass" style="align-items:flex-start">
+      ${ultPaytablesLeft()}
+      ${ultPaytablesRight()}
     </div>`;
     ctrl.innerHTML = '';
     return;
@@ -485,7 +497,14 @@ function renderUltimate(s, area, ctrl) {
     return seatHTML(p, isMe, extra, '', 'ult');
   }).join('');
 
-  area.innerHTML = tableHTML('table-ultimate', dealerContent, centerContent, seats);
+  const tableMarkup = tableHTML('table-ultimate', dealerContent, centerContent, seats);
+  area.innerHTML = `
+    <div class="ultimate-layout">
+      <div class="ult-layout-side hidden-mobile">${ultPaytablesLeft()}</div>
+      <div class="ult-layout-center">${tableMarkup}</div>
+      <div class="ult-layout-side hidden-mobile">${ultPaytablesRight()}</div>
+    </div>
+  `;
 
   if (s.phase === 'done' && s.results.length > 0 && !showingResults) {
     showingResults = true;

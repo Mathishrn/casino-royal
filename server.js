@@ -6,6 +6,7 @@ const BlackjackGame = require('./game-logic/blackjack');
 const PokerGame = require('./game-logic/poker');
 const UltimateGame = require('./game-logic/ultimate');
 const RouletteGame = require('./game-logic/roulette');
+const CrapsGame = require('./game-logic/craps');
 
 const app = express();
 const server = http.createServer(app);
@@ -97,7 +98,9 @@ io.on('connection', (socket) => {
       state: 'lobby', game: null,
       winCondition: 'none', winValue: 0,
       sessionStarted: false,
-      players: [{ id: socket.id, name: playerName, money: 1000 }]
+      players: [{ id: socket.id, name: playerName, money: 1000 }],
+      sessionStats: { bestHand: null, bestWin: {player:'', amount:0} },
+      pokerDealerIdx: 0,
     };
     rooms.set(roomId, room);
     playerRooms.set(socket.id, roomId);
@@ -160,6 +163,7 @@ io.on('connection', (socket) => {
         break;
       case 'ultimate': room.game = new UltimateGame(playerData); break;
       case 'roulette': room.game = new RouletteGame(playerData); break;
+      case 'craps': room.game = new CrapsGame(playerData); break;
     }
 
     for (const p of room.players) {
@@ -204,9 +208,29 @@ io.on('connection', (socket) => {
     const isDone = (room.gameType === 'blackjack' && g.phase === 'done') ||
                    (room.gameType === 'poker' && g.roundOver) ||
                    (room.gameType === 'ultimate' && g.phase === 'done') ||
-                   (room.gameType === 'roulette' && g.phase === 'done');
+                   (room.gameType === 'roulette' && g.phase === 'done') ||
+                   (room.gameType === 'craps' && g.phase === 'done');
     
-    if (isDone) syncMoney(room);
+    if (isDone) {
+      if ((room.gameType === 'poker' || room.gameType === 'ultimate') && g.players) {
+        g.players.forEach(p => {
+          if (p.bestHand && p.bestHand.rank > 0) {
+            if (!room.sessionStats.bestHand || p.bestHand.rank > room.sessionStats.bestHand.rank) {
+              room.sessionStats.bestHand = { player: p.name, name: p.bestHand.name, cards: p.bestHand.cards, rank: p.bestHand.rank };
+            }
+          }
+        });
+      }
+      if (g.results) {
+        g.results.forEach(r => {
+          const win = r.winnings !== undefined ? r.winnings : (r.netWin || 0);
+          if (win > room.sessionStats.bestWin.amount) {
+            room.sessionStats.bestWin = { player: r.name, amount: win };
+          }
+        });
+      }
+      syncMoney(room);
+    }
 
     broadcastGameState(roomId);
 
@@ -316,15 +340,22 @@ io.on('connection', (socket) => {
     // Send end-session with stats to all
     for (const p of room.players) {
       const sock = io.sockets.sockets.get(p.id);
-      if (sock) sock.emit('session-ended-stats', { stats, startMoney: room.startMoney });
+      if (sock) sock.emit('session-ended-stats', { stats, startMoney: room.startMoney, sessionStats: room.sessionStats });
     }
     
     room.state = 'lobby';
     room.game = null;
     room.sessionStarted = false;
+    room.sessionStats = { bestHand: null, bestWin: {player:'', amount:0} };
     room.pokerDealerIdx = 0;
     room.players.forEach(p => p.money = room.startMoney);
     broadcastRoom(roomId);
+  });
+
+  socket.on('player-emote', (data) => {
+    const roomId = playerRooms.get(socket.id);
+    if (!roomId) return;
+    socket.to(roomId).emit('show-emote', { playerId: socket.id, emote: data.emote });
   });
 
   socket.on('disconnect', () => {

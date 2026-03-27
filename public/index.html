@@ -87,6 +87,11 @@
                   <span class="game-name">Roulette</span>
                   <span class="game-desc">vs Casino</span>
                 </button>
+                <button class="game-option" data-game="craps">
+                  <span class="game-emoji">🎲</span>
+                  <span class="game-name">Craps</span>
+                  <span class="game-desc">Jeu de Dés</span>
+                </button>
               </div>
             </div>
             <div id="session-settings">
@@ -125,6 +130,7 @@
       <div class="game-title-bar">
         <span id="game-type-label" class="game-label"></span>
         <span id="game-room-label" class="room-label"></span>
+        <button id="btn-toggle-sound" class="btn btn-ghost btn-sm" style="margin-left: 10px; font-size:1.2rem; padding:0 8px" title="Activer/Désactiver le son">🔊</button>
       </div>
       <div id="my-money" class="money-display">0 €</div>
     </div>
@@ -139,6 +145,16 @@
     <div id="game-controls" class="game-controls">
       <!-- Dynamic controls rendered by app.js -->
     </div>
+    
+    <!-- Emotes Menu -->
+    <div id="emotes-menu" class="emotes-menu hidden">
+      <button class="emote-btn">😎</button>
+      <button class="emote-btn">🤬</button>
+      <button class="emote-btn">💸</button>
+      <button class="emote-btn">🔥</button>
+      <button class="emote-btn">🍻</button>
+    </div>
+    <button id="btn-toggle-emotes" class="btn float-btn" title="Réagir">💬</button>
   </div>
 
   <!-- SESSION END OVERLAY -->
@@ -153,6 +169,8 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="audio.js"></script>
+  <script src="particles.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

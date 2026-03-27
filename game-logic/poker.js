@@ -22,12 +22,13 @@ class PokerGame {
     this.currentBet = 0;
     this.minRaise = 0;
     this.lastRaiser = -1;
-    // Blinds proportional to starting bankroll: BB = 2% of startMoney, SB = half
-    this.bigBlind = Math.max(10, Math.round((startMoney || 1000) * 0.02));
-    this.smallBlind = Math.floor(this.bigBlind / 2);
+    // Blinds: BB = startMoney/100 (standard 100BB buy-in), min 2
+    this.bigBlind = Math.max(2, Math.round((startMoney || 1000) / 100));
+    this.smallBlind = Math.max(1, Math.floor(this.bigBlind / 2));
     this.results = [];
     this.roundOver = false;
     this.turnMessage = '';
+    this.actionLog = []; // Track player actions for display
   }
 
   getNextActive(from) {
@@ -177,6 +178,10 @@ class PokerGame {
       default: return false;
     }
     p.hasActed = true;
+    // Log the action
+    const actionLabels = { fold:'s\'est couché', check:'a checké', call:`a suivi (${Math.min(toCall,p.money+p.bet)}€)`, raise:`a relancé à ${p.bet}€`, 'all-in':`fait tapis (${p.bet}€)` };
+    this.actionLog.push({ name: p.name, action: actionLabels[type] || type });
+    if (this.actionLog.length > 10) this.actionLog.shift();
     this.advance();
     return true;
   }
@@ -393,7 +398,8 @@ class PokerGame {
         role: p.role,
         roleName: this.getRoleName(p.role)
       })),
-      results: this.results
+      results: this.results,
+      actionLog: this.actionLog
     };
   }
 }

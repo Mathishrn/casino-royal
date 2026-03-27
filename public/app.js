@@ -187,6 +187,22 @@ const GAME_NAMES = { blackjack:'🃏 Blackjack', poker:'♠️ Poker Texas Hold\
 socket.on('game-started', ({ gameType }) => { currentGame = gameType; betAmount = 0; tripsBet = 0; clearResultsState(); showScreen('game'); document.getElementById('game-type-label').textContent = GAME_NAMES[gameType]||gameType; document.getElementById('game-room-label').textContent = `Salle ${currentRoom.id}`; });
 socket.on('game-update', (state) => { if (!currentGame) return; if (state.isHost !== undefined) isHost = state.isHost; if (state.allPlayers) updatePlayersBar(state.allPlayers); const me = state.players?.find(p => p.id === socket.id); if (me) document.getElementById('my-money').textContent = `${me.money} €`; renderGame(state); });
 socket.on('session-ended', ({ reason, players }) => { const o = document.getElementById('session-end-overlay'); const t = document.getElementById('session-end-title'); const b = document.getElementById('session-end-body'); let m = reason.type === 'zero' ? `💀 ${reason.player} est tombé à 0€!` : `🎉 ${reason.player} a atteint ${reason.type.toUpperCase()} (${reason.amount}€)!`; t.textContent = '🏆 Fin de la session !'; b.innerHTML = `<p style="margin-bottom:16px;font-size:1.1rem">${m}</p>${players.sort((a,b)=>b.money-a.money).map((p,i)=>`<div class="result-item"><span>${i===0?'👑 ':''}${p.name}</span><span class="gold" style="font-weight:700">${p.money}€</span></div>`).join('')}`; o.classList.remove('hidden'); });
+
+// Session ended with full stats
+socket.on('session-ended-stats', ({ stats, startMoney }) => {
+  const o = document.getElementById('session-end-overlay');
+  const t = document.getElementById('session-end-title');
+  const b = document.getElementById('session-end-body');
+  t.textContent = '🏁 Session terminée — Classement';
+  let html = `<table class="stats-table"><tr><th>#</th><th>Joueur</th><th>Départ</th><th>Final</th><th>Gain</th></tr>`;
+  stats.forEach((s, i) => {
+    const cls = s.gain > 0 ? 'win' : s.gain < 0 ? 'lose' : '';
+    html += `<tr><td>${i === 0 ? '👑' : i + 1}</td><td>${s.name}</td><td>${s.startMoney}€</td><td style="font-weight:700">${s.finalMoney}€</td><td class="${cls}" style="font-weight:700">${s.gain > 0 ? '+' : ''}${s.gain}€ (${s.gainPercent > 0 ? '+' : ''}${s.gainPercent}%)</td></tr>`;
+  });
+  html += '</table>';
+  b.innerHTML = html;
+  o.classList.remove('hidden');
+});
 socket.on('connect', () => { myId = socket.id; document.getElementById('session-end-overlay').classList.add('hidden'); });
 
 function renderGame(state) {
@@ -204,9 +220,11 @@ function renderGame(state) {
 function resultsHTML(title, items) {
   return `<div class="results-section"><div class="results-card glass"><h2>${title}</h2>${items}
     <div class="results-actions">
-      <button class="btn btn-primary" onclick="nextRound()">Nouvelle manche</button>
-      ${isHost ? '<button class="btn btn-ghost" onclick="socket.emit(\'back-to-lobby\')">Changer de jeu</button>' : ''}
-      ${isHost ? '<button class="btn btn-danger btn-sm" onclick="socket.emit(\'end-session\')">Fin de session</button>' : ''}
+      ${isHost ? `
+        <button class="btn btn-primary" onclick="nextRound()">▶️ Nouvelle manche</button>
+        <button class="btn btn-ghost" onclick="socket.emit('back-to-lobby')">🔄 Changer de jeu</button>
+        <button class="btn btn-danger btn-sm" onclick="socket.emit('end-session')">🏁 Fin de session</button>
+      ` : '<p class="muted">⏳ En attente que l\'hôte lance la prochaine manche...</p>'}
     </div></div></div>`;
 }
 window.nextRound = function() { clearResultsState(); rouletteBets = []; socket.emit('next-round'); };
@@ -327,7 +345,18 @@ function renderPoker(s, area, ctrl) {
     return seatHTML(p, isMe, extra, roleBadge);
   }).join('');
 
-  area.innerHTML = banner + tableHTML('table-poker', '', centerContent, seats);
+  let tableContent = banner + tableHTML('table-poker', '', centerContent, seats);
+
+  // Action log
+  if (s.actionLog && s.actionLog.length > 0) {
+    tableContent += `<div class="action-log">`;
+    for (const a of s.actionLog.slice(-5)) {
+      tableContent += `<div class="action-log-item"><strong>${a.name}</strong> ${a.action}</div>`;
+    }
+    tableContent += `</div>`;
+  }
+
+  area.innerHTML = tableContent;
 
   if (s.phase === 'showdown' && s.results.length > 0 && !showingResults) {
     showingResults = true;

@@ -231,6 +231,8 @@ io.on('connection', (socket) => {
     const roomId = playerRooms.get(socket.id);
     const room = rooms.get(roomId);
     if (!room || !room.game) return;
+    // Only host can start next round
+    if (room.hostId !== socket.id) return socket.emit('error-msg', 'Seul l\'hôte peut lancer la prochaine manche');
 
     const playerData = room.players.map(p => ({ id: p.id, name: p.name, money: p.money }));
 
@@ -290,21 +292,39 @@ io.on('connection', (socket) => {
     broadcastRoom(roomId);
   });
 
-  // End entire session and reset money
+  // End entire session with stats and ranking
   socket.on('end-session', () => {
     const roomId = playerRooms.get(socket.id);
     const room = rooms.get(roomId);
     if (!room || room.hostId !== socket.id) return;
+    
+    // Build stats per player
+    const stats = room.players.map(p => ({
+      name: p.name,
+      startMoney: room.startMoney,
+      finalMoney: p.money,
+      gain: p.money - room.startMoney,
+      gainPercent: Math.round(((p.money - room.startMoney) / room.startMoney) * 100)
+    })).sort((a, b) => b.finalMoney - a.finalMoney);
+    
+    // Send end-session with stats to all
+    for (const p of room.players) {
+      const sock = io.sockets.sockets.get(p.id);
+      if (sock) sock.emit('session-ended-stats', { stats, startMoney: room.startMoney });
+    }
+    
     room.state = 'lobby';
     room.game = null;
     room.sessionStarted = false;
     room.pokerDealerIdx = 0;
     room.players.forEach(p => p.money = room.startMoney);
-    for (const p of room.players) {
-      const sock = io.sockets.sockets.get(p.id);
-      if (sock) sock.emit('back-to-lobby');
-    }
-    broadcastRoom(roomId);
+    setTimeout(() => {
+      for (const p of room.players) {
+        const sock = io.sockets.sockets.get(p.id);
+        if (sock) sock.emit('back-to-lobby');
+      }
+      broadcastRoom(roomId);
+    }, 500);
   });
 
   socket.on('disconnect', () => {

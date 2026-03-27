@@ -24,7 +24,7 @@ class UltimateGame {
   constructor(players) {
     this.deck = new Deck();
     this.players = players.map(p => ({
-      id: p.id, name: p.name, money: p.money,
+      id: p.id, name: p.name, money: p.money, startMoney: p.money,
       hand: [], ante: 0, blind: 0, trips: 0, play: 0,
       status: 'betting', hasRaised: false, bestHand: null
     }));
@@ -173,7 +173,7 @@ class UltimateGame {
 
     this.results = [];
     for (const p of this.players) {
-      const r = { id: p.id, name: p.name, ante: p.ante, blind: p.blind, trips: p.trips, play: p.play };
+      const r = { id: p.id, name: p.name, ante: p.ante, blind: p.blind, trips: p.trips, play: p.play, startMoney: p.startMoney };
       let detail = { anteWin: 0, blindWin: 0, playWin: 0, bonusWin: 0, anteLabel: '', blindLabel: '', playLabel: '', bonusLabel: '' };
 
       // === BONUS (always pays based on player hand) ===
@@ -193,7 +193,7 @@ class UltimateGame {
         detail.anteWin = -p.ante; detail.anteLabel = 'perdu (fold)';
         detail.blindWin = -p.blind; detail.blindLabel = 'perdu (fold)';
         r.outcome = 'fold';
-        r.winnings = -(p.ante + p.blind) + (detail.bonusWin > 0 ? detail.bonusWin : 0);
+        r.winnings = p.money - p.startMoney;
         r.detail = detail; r.money = p.money; r.bestHand = p.bestHand;
         this.results.push(r);
         continue;
@@ -254,7 +254,7 @@ class UltimateGame {
       }
 
       p.money += payout;
-      r.winnings = payout - (p.ante + p.blind + p.play) + (detail.bonusWin > 0 ? detail.bonusWin : 0);
+      r.winnings = p.money - p.startMoney;
       r.detail = detail;
       r.money = p.money;
       r.bestHand = p.bestHand;

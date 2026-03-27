@@ -169,83 +169,93 @@ class UltimateGame {
   resolve() {
     this.phase = 'done';
     this.dealer.bestHand = getBestHand([...this.dealer.hand, ...this.communityCards]);
-    // Dealer qualifies with a pair or better
     const dealerQualifies = this.dealer.bestHand.rank >= 1;
 
     this.results = [];
     for (const p of this.players) {
       const r = { id: p.id, name: p.name, ante: p.ante, blind: p.blind, trips: p.trips, play: p.play };
+      let detail = { anteWin: 0, blindWin: 0, playWin: 0, bonusWin: 0, anteLabel: '', blindLabel: '', playLabel: '', bonusLabel: '' };
 
-      // === TRIPS BONUS (always pays based on player hand, regardless of win/loss) ===
-      let tripsResult = 0;
-      let tripsOutcome = '';
-      
+      // === BONUS (always pays based on player hand) ===
       if (p.status === 'folded') {
-        // Folded: lose ante + blind, keep no refund. Trips still evaluated.
+        p.bestHand = getBestHand([...p.hand, ...this.communityCards]);
         if (p.trips > 0) {
-          p.bestHand = getBestHand([...p.hand, ...this.communityCards]);
           const tripsMult = this.getTripsPay(p.bestHand.rank);
           if (tripsMult >= 0) {
-            tripsResult = Math.floor(p.trips * tripsMult);
-            p.money += p.trips + tripsResult; // return trips + winnings
-            tripsOutcome = `Trips: +${tripsResult}€`;
+            detail.bonusWin = Math.floor(p.trips * tripsMult);
+            p.money += p.trips + detail.bonusWin;
+            detail.bonusLabel = `+${detail.bonusWin}€`;
           } else {
-            tripsOutcome = 'Trips: perdu';
+            detail.bonusWin = -p.trips;
+            detail.bonusLabel = 'perdu';
           }
         }
+        detail.anteWin = -p.ante; detail.anteLabel = 'perdu (fold)';
+        detail.blindWin = -p.blind; detail.blindLabel = 'perdu (fold)';
         r.outcome = 'fold';
-        r.winnings = -(p.ante + p.blind) + tripsResult;
-        r.tripsOutcome = tripsOutcome;
-        r.money = p.money;
-        r.bestHand = p.bestHand;
+        r.winnings = -(p.ante + p.blind) + (detail.bonusWin > 0 ? detail.bonusWin : 0);
+        r.detail = detail; r.money = p.money; r.bestHand = p.bestHand;
         this.results.push(r);
         continue;
       }
 
-      // Evaluate player hand
       p.bestHand = getBestHand([...p.hand, ...this.communityCards]);
       const cmp = compareHands(p.bestHand, this.dealer.bestHand);
 
-      // Trips bonus (independent of win/loss vs dealer)
+      // Bonus (independent)
       if (p.trips > 0) {
         const tripsMult = this.getTripsPay(p.bestHand.rank);
         if (tripsMult >= 0) {
-          tripsResult = Math.floor(p.trips * tripsMult);
-          p.money += p.trips + tripsResult;
-          tripsOutcome = `Trips: +${tripsResult}€`;
+          detail.bonusWin = Math.floor(p.trips * tripsMult);
+          p.money += p.trips + detail.bonusWin;
+          detail.bonusLabel = `+${detail.bonusWin}€`;
         } else {
-          tripsOutcome = 'Trips: perdu';
+          detail.bonusWin = -p.trips;
+          detail.bonusLabel = 'perdu';
         }
       }
 
       let payout = 0;
 
       if (cmp > 0) {
-        // === PLAYER WINS ===
         // Play: 1:1
+        detail.playWin = p.play; detail.playLabel = `+${p.play}€`;
         payout += p.play * 2;
         // Ante: 1:1 if dealer qualifies, push if not
-        payout += dealerQualifies ? p.ante * 2 : p.ante;
-        // Blind: pay according to blind paytable
+        if (dealerQualifies) {
+          detail.anteWin = p.ante; detail.anteLabel = `+${p.ante}€`;
+          payout += p.ante * 2;
+        } else {
+          detail.anteWin = 0; detail.anteLabel = 'push (non qualifié)';
+          payout += p.ante;
+        }
+        // Blind paytable
         const blindMult = this.getBlindPay(p.bestHand.rank);
         if (blindMult > 0) {
-          payout += p.blind + Math.floor(p.blind * blindMult);
+          detail.blindWin = Math.floor(p.blind * blindMult);
+          detail.blindLabel = `+${detail.blindWin}€ (${blindMult}:1)`;
+          payout += p.blind + detail.blindWin;
         } else {
-          payout += p.blind; // Push: return blind
+          detail.blindWin = 0; detail.blindLabel = 'push';
+          payout += p.blind;
         }
         r.outcome = 'win';
       } else if (cmp === 0) {
-        // === TIE: all bets push ===
         payout += p.ante + p.blind + p.play;
+        detail.anteWin = 0; detail.anteLabel = 'push';
+        detail.blindWin = 0; detail.blindLabel = 'push';
+        detail.playWin = 0; detail.playLabel = 'push';
         r.outcome = 'push';
       } else {
-        // === PLAYER LOSES: lose all bets ===
+        detail.anteWin = -p.ante; detail.anteLabel = 'perdu';
+        detail.blindWin = -p.blind; detail.blindLabel = 'perdu';
+        detail.playWin = -p.play; detail.playLabel = 'perdu';
         r.outcome = 'lose';
       }
 
       p.money += payout;
-      r.winnings = payout - (p.ante + p.blind + p.play) + tripsResult;
-      r.tripsOutcome = tripsOutcome;
+      r.winnings = payout - (p.ante + p.blind + p.play) + (detail.bonusWin > 0 ? detail.bonusWin : 0);
+      r.detail = detail;
       r.money = p.money;
       r.bestHand = p.bestHand;
       this.results.push(r);

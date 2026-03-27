@@ -10,6 +10,7 @@ let tripsBet = 0;
 let showingResults = false;
 let resultsTimer = null;
 let isHost = false;
+let seenCardCounts = {}; // track card counts to avoid re-animating
 
 // ===== SCREEN MANAGEMENT =====
 function showScreen(name) {
@@ -29,15 +30,22 @@ const SUITS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
 const VALUES = { 2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:'V',12:'D',13:'R',14:'A' };
 const REDS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 
-function cardHTML(card, idx = 0) {
-  if (!card || card.value === 0 || card.suit === 'back') return `<div class="card back card-reveal" style="animation-delay:${idx * 0.4}s"></div>`;
+function cardHTML(card, idx = 0, isNew = true) {
+  const animClass = isNew ? 'card-reveal' : '';
+  const animStyle = isNew ? `animation-delay:${idx * 0.4}s` : '';
+  if (!card || card.value === 0 || card.suit === 'back') return `<div class="card back ${animClass}" style="${animStyle}"></div>`;
   const suit = SUITS[card.suit] || '';
   const val = VALUES[card.value] || card.value;
-  return `<div class="card ${card.suit} card-reveal" style="animation-delay:${idx * 0.4}s"><span class="card-value">${val}</span><span class="card-suit">${suit}</span></div>`;
+  return `<div class="card ${card.suit} ${animClass}" style="${animStyle}"><span class="card-value">${val}</span><span class="card-suit">${suit}</span></div>`;
 }
-function cardsHTML(cards) {
-  return `<div class="card-container">${(cards||[]).map((c, i) => cardHTML(c, i)).join('')}</div>`;
+function cardsHTML(cards, sectionKey = '') {
+  if (!cards || cards.length === 0) return '<div class="card-container"></div>';
+  const prevCount = sectionKey ? (seenCardCounts[sectionKey] || 0) : 0;
+  const html = cards.map((c, i) => cardHTML(c, i < prevCount ? 0 : i - prevCount, i >= prevCount)).join('');
+  if (sectionKey) seenCardCounts[sectionKey] = cards.length;
+  return `<div class="card-container">${html}</div>`;
 }
+
 
 // ===== PLAYERS BAR =====
 function updatePlayersBar(players) {
@@ -146,6 +154,7 @@ function updateBetDisplay() {
 function clearResultsState() {
   showingResults = false;
   if (resultsTimer) { clearTimeout(resultsTimer); resultsTimer = null; }
+  seenCardCounts = {}; // reset card animations for new round
 }
 
 // ===== HOME =====
@@ -270,7 +279,7 @@ function tableHTML(tableClass, dealerContent, centerContent, playerSeats) {
   </div>`;
 }
 
-function seatHTML(p, isMe, extra = '', badge = '') {
+function seatHTML(p, isMe, extra = '', badge = '', gameKey = '') {
   let cls = 'seat';
   if (isMe) cls += ' seat-me';
   if (p.status === 'bust' || p.status === 'folded') cls += ' seat-out';
@@ -281,7 +290,7 @@ function seatHTML(p, isMe, extra = '', badge = '') {
     <div class="seat-name">${p.name}</div>
     <div class="seat-money">${p.money} €</div>
     ${extra}
-    <div class="seat-cards">${cardsHTML(p.hand)}</div>
+    <div class="seat-cards">${cardsHTML(p.hand, gameKey ? gameKey + '_p_' + p.id : '')}</div>
   </div>`;
 }
 
@@ -298,7 +307,7 @@ function renderBlackjack(s, area, ctrl) {
     banner = turnBannerHTML(tp?.name || '...', s.currentPlayerId === socket.id);
   }
 
-  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand)}<div class="hand-value">${s.dealer.handValue}</div>`;
+  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand, 'bj_dealer')}<div class="hand-value">${s.dealer.handValue}</div>`;
 
   const seats = s.players.map(p => {
     const isMe = p.id === socket.id;
@@ -306,7 +315,7 @@ function renderBlackjack(s, area, ctrl) {
     const extra = `<div class="seat-bet">Mise: ${p.bet}€</div><div class="hand-value">${p.handValue}</div>
       ${p.status === 'bust' ? '<div class="p-status bust">BUST</div>' : ''}
       ${p.status === 'blackjack' ? '<div class="p-status blackjack">BLACKJACK!</div>' : ''}`;
-    return seatHTML(p, isMe, extra);
+    return seatHTML(p, isMe, extra, '', 'bj');
   }).join('');
 
   area.innerHTML = banner + tableHTML('table-blackjack', dealerContent, '', seats);
@@ -360,7 +369,7 @@ function renderPoker(s, area, ctrl) {
       <span style="color:var(--gold);font-weight:700;font-size:1.1rem">Pot: ${s.pot}€</span>
       <span>${phaseLabels[s.phase] || s.phase.toUpperCase()}</span>
     </div>
-    ${s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards)}</div>` : ''}`;
+    ${s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards, 'pk_comm')}</div>` : ''}`;
 
   const seats = s.players.filter(p => p.status !== 'out').map(p => {
     const isMe = p.id === socket.id;
@@ -370,7 +379,7 @@ function renderPoker(s, area, ctrl) {
       ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
       ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}
       ${p.status === 'all-in' ? '<div class="p-status blackjack">ALL-IN</div>' : ''}`;
-    return seatHTML(p, isMe, extra, roleBadge);
+    return seatHTML(p, isMe, extra, roleBadge, 'pk');
   }).join('');
 
   let tableContent = banner + tableHTML('table-poker', '', centerContent, seats);
@@ -458,9 +467,9 @@ function renderUltimate(s, area, ctrl) {
   }
   if (s.phase === 'betting') { clearResultsState(); area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des mises...</div>'; ctrl.innerHTML = ''; return; }
 
-  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand)}${s.dealer.bestHand ? `<div class="hand-value">${s.dealer.bestHand.name}</div>` : ''}`;
+  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand, 'ult_dealer')}${s.dealer.bestHand ? `<div class="hand-value">${s.dealer.bestHand.name}</div>` : ''}`;
 
-  const centerContent = s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards)}</div>` : '';
+  const centerContent = s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards, 'ult_comm')}</div>` : '';
 
   const seats = s.players.map(p => {
     const isMe = p.id === socket.id;
@@ -473,7 +482,7 @@ function renderUltimate(s, area, ctrl) {
       </div>
       ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
       ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}`;
-    return seatHTML(p, isMe, extra);
+    return seatHTML(p, isMe, extra, '', 'ult');
   }).join('');
 
   area.innerHTML = tableHTML('table-ultimate', dealerContent, centerContent, seats);
@@ -482,7 +491,21 @@ function renderUltimate(s, area, ctrl) {
     showingResults = true;
     resultsTimer = setTimeout(() => {
       const a = document.getElementById('game-area');
-      if (a) a.innerHTML += resultsHTML('💎 Résultats', s.results.map(r => `<div class="result-item"><span>${r.name}</span><span class="${r.winnings > 0 ? 'win' : r.winnings < 0 ? 'lose' : 'push'}">${r.winnings > 0 ? '+' : ''}${r.winnings}€ (${r.outcome})</span>${r.tripsOutcome ? `<span class="muted">${r.tripsOutcome}</span>` : ''}<span class="muted">${r.money}€</span></div>`).join(''));
+      if (a) a.innerHTML += resultsHTML('💎 Résultats Détaillés', s.results.map(r => `
+        <div class="result-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+          <div style="display:flex;justify-content:space-between;width:100%">
+            <strong>${r.name}</strong>
+            <strong class="${r.winnings > 0 ? 'win' : r.winnings < 0 ? 'lose' : 'push'}">${r.winnings > 0 ? '+' : ''}${r.winnings}€</strong>
+          </div>
+          ${r.detail ? `<div class="ult-results-detail" style="display:flex;gap:12px;font-size:0.8rem;background:rgba(0,0,0,0.2);padding:6px;border-radius:4px;width:100%">
+            <div class="${r.detail.anteWin > 0 ? 'win' : r.detail.anteWin < 0 ? 'lose' : 'muted'}">A: ${r.detail.anteLabel}</div>
+            <div class="${r.detail.blindWin > 0 ? 'win' : r.detail.blindWin < 0 ? 'lose' : 'muted'}">B: ${r.detail.blindLabel}</div>
+            <div class="${r.detail.playWin > 0 ? 'win' : r.detail.playWin < 0 ? 'lose' : 'muted'}">P: ${r.detail.playLabel}</div>
+            ${r.trips > 0 ? `<div class="${r.detail.bonusWin > 0 ? 'win' : 'lose'}">Bonus: ${r.detail.bonusLabel}</div>` : ''}
+          </div>` : ''}
+          <div class="muted" style="align-self:flex-end">${r.money}€ au total</div>
+        </div>
+      `).join(''));
       document.getElementById('game-controls').innerHTML = '';
     }, 3000);
   }

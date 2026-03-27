@@ -29,14 +29,14 @@ const SUITS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
 const VALUES = { 2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:'V',12:'D',13:'R',14:'A' };
 const REDS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 
-function cardHTML(card) {
-  if (!card || card.value === 0 || card.suit === 'back') return '<div class="card back"></div>';
+function cardHTML(card, idx = 0) {
+  if (!card || card.value === 0 || card.suit === 'back') return `<div class="card back card-reveal" style="animation-delay:${idx * 0.4}s"></div>`;
   const suit = SUITS[card.suit] || '';
   const val = VALUES[card.value] || card.value;
-  return `<div class="card ${card.suit}"><span class="card-value">${val}</span><span class="card-suit">${suit}</span></div>`;
+  return `<div class="card ${card.suit} card-reveal" style="animation-delay:${idx * 0.4}s"><span class="card-value">${val}</span><span class="card-suit">${suit}</span></div>`;
 }
 function cardsHTML(cards) {
-  return `<div class="card-container">${(cards||[]).map(c => cardHTML(c)).join('')}</div>`;
+  return `<div class="card-container">${(cards||[]).map((c, i) => cardHTML(c, i)).join('')}</div>`;
 }
 
 // ===== PLAYERS BAR =====
@@ -54,6 +54,7 @@ function updatePlayersBar(players) {
 
 // ===== BET SECTION =====
 let lastBetAmount = 0;
+let lastTripsBet = 0;
 
 function betSectionHTML(title, subtitle = '', showBonus = false) {
   return `
@@ -100,8 +101,8 @@ function betSectionHTML(title, subtitle = '', showBonus = false) {
       </div>
 
       ${showBonus ? `<div style="margin-top:8px;color:var(--muted);font-size:0.85rem;text-align:center">
-        Total: <strong style="color:var(--gold)">${betAmount * 2 + tripsBet} €</strong>
-        <span class="muted">(Ante ${betAmount} + Blind ${betAmount}${tripsBet > 0 ? ` + Bonus ${tripsBet}` : ''})</span>
+        Total: <strong id="ult-total" style="color:var(--gold)">${betAmount * 2 + tripsBet} €</strong>
+        <span id="ult-total-detail" class="muted">(Ante ${betAmount} + Blind ${betAmount}${tripsBet > 0 ? ` + Bonus ${tripsBet}` : ''})</span>
       </div>` : ''}
 
       <div class="bet-buttons">
@@ -114,7 +115,7 @@ function betSectionHTML(title, subtitle = '', showBonus = false) {
 window.addBet = function(a) { betAmount += a; updateBetDisplay(); };
 window.resetBet = function() { betAmount = 0; tripsBet = 0; updateBetDisplay(); };
 window.addTrips = function(a) { tripsBet += a; updateBetDisplay(); };
-window.repeatBet = function() { if (lastBetAmount > 0) betAmount = lastBetAmount; updateBetDisplay(); };
+window.repeatBet = function() { if (lastBetAmount > 0) { betAmount = lastBetAmount; tripsBet = lastTripsBet; } updateBetDisplay(); };
 window.doubleBet = function() { if (betAmount > 0) betAmount *= 2; updateBetDisplay(); };
 window.halfBet = function() { if (betAmount >= 2) betAmount = Math.floor(betAmount / 2); updateBetDisplay(); };
 window.setBetFromInput = function() {
@@ -134,6 +135,11 @@ function updateBetDisplay() {
   if (inp) inp.value = betAmount;
   const ti = document.getElementById('trips-manual');
   if (ti) ti.value = tripsBet;
+  // Update dynamic total
+  const tot = document.getElementById('ult-total');
+  if (tot) tot.textContent = `${betAmount * 2 + tripsBet} €`;
+  const totDetail = document.getElementById('ult-total-detail');
+  if (totDetail) totDetail.textContent = `(Ante ${betAmount} + Blind ${betAmount}${tripsBet > 0 ? ` + Bonus ${tripsBet}` : ''})`;
   const bl = document.getElementById('blind-display');
   if (bl) bl.textContent = `= ${betAmount} €`;
 }
@@ -325,7 +331,8 @@ function renderBlackjack(s, area, ctrl) {
 
 window.confirmBet = function() {
   if (betAmount <= 0) return notify('Mise trop faible', 'error');
-  lastBetAmount = betAmount; // Remember for repeat
+  lastBetAmount = betAmount;
+  lastTripsBet = tripsBet;
   if (currentGame === 'ultimate') {
     socket.emit('game-action', { action: 'bet', data: { amount: betAmount, trips: tripsBet } });
   } else {
@@ -414,6 +421,12 @@ function renderUltimate(s, area, ctrl) {
     // Show paytable
     area.innerHTML += `<div class="paytable-container glass">
       <div class="paytable">
+        <h4>💰 Ante</h4>
+        <table><tr><td>Si croupier qualifié</td><td class="gold">1:1</td></tr>
+        <tr><td>Sinon</td><td>Push</td></tr></table>
+        <p class="muted" style="font-size:0.7rem;margin-top:4px">Qualifié = Paire+</p>
+      </div>
+      <div class="paytable">
         <h4>📋 Blind</h4>
         <table><tr><td>Quinte Flush Royale</td><td class="gold">500:1</td></tr>
         <tr><td>Quinte Flush</td><td class="gold">50:1</td></tr>
@@ -422,6 +435,12 @@ function renderUltimate(s, area, ctrl) {
         <tr><td>Couleur</td><td class="gold">3:2</td></tr>
         <tr><td>Quinte</td><td class="gold">1:1</td></tr>
         <tr><td>Autre</td><td>Push</td></tr></table>
+      </div>
+      <div class="paytable">
+        <h4>🎯 Play</h4>
+        <table><tr><td>Victoire</td><td class="gold">1:1</td></tr>
+        <tr><td>Égalité</td><td>Push</td></tr>
+        <tr><td>Défaite</td><td class="muted">Perdu</td></tr></table>
       </div>
       <div class="paytable">
         <h4>🎲 Bonus</h4>

@@ -678,3 +678,15 @@ input:focus { outline: none; border-color: var(--gold); }
   font-size: 1.1rem; font-weight: 700; color: var(--gold);
   padding: 6px 0;
 }
+
+/* ===== CARD REVEAL ANIMATION ===== */
+.card-reveal {
+  opacity: 0;
+  transform: translateY(20px) scale(0.8);
+  animation: card-flip-in 0.5s ease-out forwards;
+}
+@keyframes card-flip-in {
+  0% { opacity: 0; transform: translateY(20px) scale(0.8); }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}

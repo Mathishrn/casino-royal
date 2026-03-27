@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎰 Casino Multijoueur</title>
+  <meta name="description" content="Casino multijoueur en réseau local - Blackjack, Poker, Ultimate, Roulette">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- NOTIFICATION -->
+  <div id="notification" class="notification hidden"></div>
+
+  <!-- HOME SCREEN -->
+  <div id="screen-home" class="screen active">
+    <div class="home-bg">
+      <div class="home-container">
+        <div class="logo-section">
+          <div class="logo-icon">🎰</div>
+          <h1 class="logo-title">Casino<span class="gold">Royal</span></h1>
+          <p class="logo-sub">Multijoueur en réseau local</p>
+        </div>
+        <div class="home-card glass">
+          <div class="input-group">
+            <label for="player-name">Votre pseudo</label>
+            <input type="text" id="player-name" placeholder="Entrez votre pseudo..." maxlength="15" autocomplete="off">
+          </div>
+          <div class="home-buttons">
+            <button id="btn-create" class="btn btn-primary btn-lg">
+              <span class="btn-icon">✨</span> Créer une salle
+            </button>
+            <div class="separator"><span>ou</span></div>
+            <div class="join-row">
+              <input type="text" id="room-code" placeholder="Code salle" maxlength="4" class="room-input" autocomplete="off">
+              <button id="btn-join" class="btn btn-secondary">Rejoindre</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOBBY SCREEN -->
+  <div id="screen-lobby" class="screen">
+    <div class="lobby-container">
+      <div class="lobby-header">
+        <button id="btn-leave" class="btn btn-ghost">← Quitter</button>
+        <div class="room-info">
+          <h2>Salle <span id="lobby-room-id" class="gold"></span></h2>
+        </div>
+      </div>
+
+      <div class="lobby-grid">
+        <!-- Players Panel -->
+        <div class="lobby-panel glass">
+          <h3>👥 Joueurs</h3>
+          <div id="lobby-players" class="player-list"></div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="lobby-panel glass">
+          <h3>⚙️ Paramètres</h3>
+          <div id="lobby-settings">
+            <div class="input-group">
+              <label>Jeu</label>
+              <div class="game-select" id="game-select">
+                <button class="game-option" data-game="blackjack">
+                  <span class="game-emoji">🃏</span>
+                  <span class="game-name">Blackjack</span>
+                  <span class="game-desc">vs Casino</span>
+                </button>
+                <button class="game-option" data-game="poker">
+                  <span class="game-emoji">♠️</span>
+                  <span class="game-name">Poker</span>
+                  <span class="game-desc">Entre joueurs</span>
+                </button>
+                <button class="game-option" data-game="ultimate">
+                  <span class="game-emoji">💎</span>
+                  <span class="game-name">Ultimate</span>
+                  <span class="game-desc">vs Casino</span>
+                </button>
+                <button class="game-option" data-game="roulette">
+                  <span class="game-emoji">🎡</span>
+                  <span class="game-name">Roulette</span>
+                  <span class="game-desc">vs Casino</span>
+                </button>
+              </div>
+            </div>
+            <div id="session-settings">
+              <div class="input-group">
+                <label for="start-money">💰 Argent de départ</label>
+                <div class="money-input-row">
+                  <input type="number" id="start-money" value="1000" min="100" step="100">
+                  <span class="currency">€</span>
+                </div>
+              </div>
+              <div class="input-group">
+                <label for="win-condition">🏆 Condition de fin</label>
+                <select id="win-condition" class="select-input">
+                  <option value="none">Pas de limite (on arrête quand on veut)</option>
+                  <option value="first_zero">Le premier à 0 €</option>
+                  <option value="first_x2">Le premier à x2</option>
+                  <option value="first_x5">Le premier à x5</option>
+                  <option value="first_x10">Le premier à x10</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div id="lobby-settings-guest" class="hidden">
+            <p class="muted">En attente que l'hôte configure la partie...</p>
+          </div>
+          <button id="btn-start" class="btn btn-primary btn-lg hidden">🎮 Lancer la partie</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="screen-game" class="screen">
+    <div class="game-header">
+      <button id="btn-back-lobby" class="btn btn-ghost btn-sm">← Changer de jeu</button>
+      <div class="game-title-bar">
+        <span id="game-type-label" class="game-label"></span>
+        <span id="game-room-label" class="room-label"></span>
+      </div>
+      <div id="my-money" class="money-display">0 €</div>
+    </div>
+
+    <!-- Players scoreboard bar -->
+    <div id="players-bar" class="players-bar"></div>
+
+    <div id="game-area" class="game-area">
+      <!-- Dynamic game content rendered by app.js -->
+    </div>
+
+    <div id="game-controls" class="game-controls">
+      <!-- Dynamic controls rendered by app.js -->
+    </div>
+  </div>
+
+  <!-- SESSION END OVERLAY -->
+  <div id="session-end-overlay" class="session-end-overlay hidden">
+    <div class="results-card glass" style="max-width:500px">
+      <h2 id="session-end-title">🏆 Fin de la session !</h2>
+      <div id="session-end-body"></div>
+      <div class="results-actions" style="margin-top:20px">
+        <button class="btn btn-primary" onclick="socket.emit('end-session')">Nouvelle session</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

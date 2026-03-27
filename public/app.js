@@ -221,7 +221,7 @@ socket.on('back-to-lobby', () => { showScreen('lobby'); currentGame = null; clea
 const GAME_NAMES = { blackjack:'🃏 Blackjack', poker:'♠️ Poker Texas Hold\'em', ultimate:'💎 Ultimate Poker', roulette:'🎡 Roulette' };
 socket.on('game-started', ({ gameType }) => { currentGame = gameType; betAmount = 0; tripsBet = 0; clearResultsState(); showScreen('game'); document.getElementById('game-type-label').textContent = GAME_NAMES[gameType]||gameType; document.getElementById('game-room-label').textContent = `Salle ${currentRoom.id}`; });
 socket.on('game-update', (state) => { if (!currentGame) return; if (state.isHost !== undefined) isHost = state.isHost; if (state.allPlayers) updatePlayersBar(state.allPlayers); const me = state.players?.find(p => p.id === socket.id); if (me) document.getElementById('my-money').textContent = `${me.money} €`; renderGame(state); });
-socket.on('session-ended', ({ reason, players }) => { const o = document.getElementById('session-end-overlay'); const t = document.getElementById('session-end-title'); const b = document.getElementById('session-end-body'); let m = reason.type === 'zero' ? `💀 ${reason.player} est tombé à 0€!` : `🎉 ${reason.player} a atteint ${reason.type.toUpperCase()} (${reason.amount}€)!`; t.textContent = '🏆 Fin de la session !'; b.innerHTML = `<p style="margin-bottom:16px;font-size:1.1rem">${m}</p>${players.sort((a,b)=>b.money-a.money).map((p,i)=>`<div class="result-item"><span>${i===0?'👑 ':''}${p.name}</span><span class="gold" style="font-weight:700">${p.money}€</span></div>`).join('')}`; o.classList.remove('hidden'); });
+socket.on('session-ended', ({ reason, players }) => { const o = document.getElementById('session-end-overlay'); const t = document.getElementById('session-end-title'); const b = document.getElementById('session-end-body'); let m = reason.type === 'zero' ? `💀 ${reason.player} est tombé à 0€!` : `🎉 ${reason.player} a atteint ${reason.type.toUpperCase()} (${reason.amount}€)!`; t.textContent = '🏆 Fin de la session !'; b.innerHTML = `<p style="margin-bottom:16px;font-size:1.1rem">${m}</p>${players.sort((a,b)=>b.money-a.money).map((p,i)=>`<div class="result-item"><span>${i===0?'👑 ':''}${p.name}</span><span class="gold" style="font-weight:700">${p.money}€</span></div>`).join('')}<button class="btn btn-primary" style="margin-top:20px;width:100%" onclick="closeStatsOverlay()">Retour au Lobby</button>`; o.classList.remove('hidden'); });
 
 // Session ended with full stats
 socket.on('session-ended-stats', ({ stats, startMoney }) => {
@@ -234,10 +234,15 @@ socket.on('session-ended-stats', ({ stats, startMoney }) => {
     const cls = s.gain > 0 ? 'win' : s.gain < 0 ? 'lose' : '';
     html += `<tr><td>${i === 0 ? '👑' : i + 1}</td><td>${s.name}</td><td>${s.startMoney}€</td><td style="font-weight:700">${s.finalMoney}€</td><td class="${cls}" style="font-weight:700">${s.gain > 0 ? '+' : ''}${s.gain}€ (${s.gainPercent > 0 ? '+' : ''}${s.gainPercent}%)</td></tr>`;
   });
-  html += '</table>';
+  html += '</table><button class="btn btn-primary" style="margin-top:20px;width:100%" onclick="closeStatsOverlay()">Retour au Lobby</button>';
   b.innerHTML = html;
   o.classList.remove('hidden');
 });
+
+window.closeStatsOverlay = function() {
+  document.getElementById('session-end-overlay').classList.add('hidden');
+  showScreen('lobby');
+};
 socket.on('connect', () => { myId = socket.id; document.getElementById('session-end-overlay').classList.add('hidden'); });
 
 function renderGame(state) {

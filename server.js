@@ -222,6 +222,12 @@ io.on('connection', (socket) => {
               players: room.players.map(rp => ({ name: rp.name, money: rp.money }))
             });
           }
+          room.state = 'lobby';
+          room.game = null;
+          room.sessionStarted = false;
+          room.pokerDealerIdx = 0;
+          room.players.forEach(p => p.money = room.startMoney);
+          broadcastRoom(roomId);
         }, 4000); // wait for results display
       }
     }
@@ -318,13 +324,7 @@ io.on('connection', (socket) => {
     room.sessionStarted = false;
     room.pokerDealerIdx = 0;
     room.players.forEach(p => p.money = room.startMoney);
-    setTimeout(() => {
-      for (const p of room.players) {
-        const sock = io.sockets.sockets.get(p.id);
-        if (sock) sock.emit('back-to-lobby');
-      }
-      broadcastRoom(roomId);
-    }, 500);
+    broadcastRoom(roomId);
   });
 
   socket.on('disconnect', () => {

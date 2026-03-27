@@ -381,7 +381,10 @@ function renderPoker(s, area, ctrl) {
     p._isTurn = p.id === s.currentPlayerId && !s.roundOver;
     const roleBadge = p.roleName ? `<div class="role-badge">${p.roleName}</div>` : '';
     const extra = `${p.bet > 0 ? `<div class="seat-bet">Mise: ${p.bet}€</div>` : ''}
-      ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
+      ${p.bestHand ? `<div class="p-status blackjack">
+        <div style="font-weight:bold">${p.bestHand.name}</div>
+        <div style="font-size:0.75em; opacity:0.9">${formatMiniHand(p.bestHand.cards)}</div>
+      </div>` : ''}
       ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}
       ${p.status === 'all-in' ? '<div class="p-status blackjack">ALL-IN</div>' : ''}`;
     return seatHTML(p, isMe, extra, roleBadge, 'pk');
@@ -467,6 +470,16 @@ function ultPaytablesRight() {
   </div>`;
 }
 
+function formatMiniHand(cards) {
+  if (!cards || !cards.length) return '';
+  return cards.map(c => {
+    const s = SUITS[c.suit] || '';
+    const v = VALUES[c.value] || c.value;
+    const color = (c.suit === 'heart' || c.suit === 'diamond') ? 'var(--red)' : '#fff';
+    return `<span style="color:${color}; margin:0 1px">${v}${s}</span>`;
+  }).join('');
+}
+
 // ===== ULTIMATE POKER =====
 function renderUltimate(s, area, ctrl) {
   const me = s.players.find(p => p.id === socket.id);
@@ -484,7 +497,11 @@ function renderUltimate(s, area, ctrl) {
   }
   if (s.phase === 'betting') { clearResultsState(); area.innerHTML = '<div class="turn-banner waiting">⏳ En attente des mises...</div>'; ctrl.innerHTML = ''; return; }
 
-  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand, 'ult_dealer')}${s.dealer.bestHand ? `<div class="hand-value">${s.dealer.bestHand.name}</div>` : ''}`;
+  const dealerContent = `<div class="section-label">CROUPIER</div>${cardsHTML(s.dealer.hand, 'ult_dealer')}
+    ${s.dealer.bestHand ? `<div class="hand-value" style="display:flex;flex-direction:column;align-items:center;">
+      <span>${s.dealer.bestHand.name}</span>
+      <span style="font-size:0.75em; font-weight:normal; opacity:0.9">${formatMiniHand(s.dealer.bestHand.cards)}</span>
+    </div>` : ''}`;
 
   const centerContent = s.communityCards?.length > 0 ? `<div class="table-community">${cardsHTML(s.communityCards, 'ult_comm')}</div>` : '';
 
@@ -497,7 +514,10 @@ function renderUltimate(s, area, ctrl) {
         ${p.trips > 0 ? `<span class="bet-spot trips">Bonus:${p.trips}€</span>` : ''}
         ${p.play > 0 ? `<span class="bet-spot play">Play:${p.play}€</span>` : ''}
       </div>
-      ${p.bestHand ? `<div class="p-status blackjack">${p.bestHand.name}</div>` : ''}
+      ${p.bestHand ? `<div class="p-status blackjack">
+        <div style="font-weight:bold">${p.bestHand.name}</div>
+        <div style="font-size:0.75em; opacity:0.9">${formatMiniHand(p.bestHand.cards)}</div>
+      </div>` : ''}
       ${p.status === 'folded' ? '<div class="p-status bust">Couché</div>' : ''}`;
     return seatHTML(p, isMe, extra, '', 'ult');
   }).join('');
